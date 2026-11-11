@@ -1,8 +1,8 @@
 """워크숍 모션 영상 의뢰 (Streamlit) — 주소 하나로 세 화면.
 
-  /                 분임 화면(휴대폰): 분임 고르기 → 분임 코드 → 의뢰서 쓰기·제출 → 결과물 보기·수정 요청
-  /?g=3&k=1234      분임 QR 카드로 바로 들어오는 주소
-  /?view=admin      관리팀(노트북, PIN): 진행 현황 · Claude 요청문 복사 · 결과물 올리기 · 코드/QR · 백업
+  /                 분임 화면(휴대폰): 분임 고르기 → 비밀번호(처음엔 분임이 직접 만듦) → 기획서 쓰기·제출 → 결과물 보기·수정 요청
+  /?g=3             분임 QR 카드로 바로 들어오는 주소(그 분임 비밀번호 화면)
+  /?view=admin      관리팀(노트북, PIN): 진행 현황 · Claude 요청문 복사 · 결과물 올리기 · 비밀번호 초기화/QR · 백업
   /?view=screen     스크린(프로젝터): 관리팀이 고른 결과물을 크게 틀기
 """
 from __future__ import annotations
@@ -115,10 +115,6 @@ def admin_pin() -> str:
     return secret("admin_pin") or "0000"
 
 
-def salt() -> str:
-    return secret("code_salt") or secret("admin_pin") or "motion-default"
-
-
 def base_url() -> str:
     S = store.get_settings()
     if S["public_url"]:
@@ -169,26 +165,23 @@ def confirm_button(label, key, warn):
     return False
 
 
-# ───────────────────────── 의뢰서 내용 보기(읽기 전용)
+# ───────────────────────── 기획서 내용 보기(읽기 전용)
 def summary_html(d: dict, atts: list[dict]) -> str:
     def row(k, v):
         v = str(v).strip()
         return f"<div><b>{k}</b> · {ESC(v)}</div>" if v else ""
-    length = d["length_custom"] if d["length"] == "직접 입력" else d["length"]
-    use = d["use_etc"] if d["use"] == "기타" and d["use_etc"] else d["use"]
-    h = [row("영상 제목", d["title"]), row("쓰임새", use), row("길이", length), row("화면", f'{d["ratio"]} · {d["quality"]}'), row("재생", d["loop"]),
-         row("전하고 싶은 한 문장", d["message"]), row("보는 사람", d["audience"]), row("느꼈으면 하는 것", d["feeling"]),
-         row("분위기", ", ".join(d["mood"])), row("그림 스타일", d["style"]), row("주인공 색", d["color"]), row("글꼴", d["font"]),
-         row("참고할 느낌", d["ref"]), row("피하고 싶은 것", d["avoid"])]
-    h.append(f'<div style="margin-top:.4rem"><b>장면 구성</b> · 합계 {store.total_sec(d)}초</div>')
-    for i, s in enumerate(d["scenes"], 1):
-        h.append(f'<div class="sc">장면 {i} ({s["sec"]}초)<br>· 글자: {ESC(s["text"]) or "(없음)"}'
-                 + (f'<br>· 모습: {ESC(s["look"])}' if s["look"].strip() else "")
-                 + (f'<br>· 움직임: {ESC(s["motion"])}' if s["motion"].strip() else "") + "</div>")
-    h += [row("배경음악", d["music"] + (f' ({d["music_mood"]})' if d["music_mood"] and d["music"] == store.YESNO_MUSIC[0] else "")),
-          row("효과음", d["sfx"]), row("내레이션", d["narration"]),
-          row("첨부", ", ".join(a["name"] for a in atts)), row("마지막 장면 멈춤", f'{d["hold_end"]}초' if d["hold_end"] else ""),
-          row("표지 그림", "받기" if d["cover"] else ""), row("기타 요청", d["etc"])]
+    roles = " · ".join(f"{lab} {d[k]}" for k, lab in store.ROLES if d[k].strip())
+    h = [row("역할", roles), row("주제", d["topic"]), row("영상 제목", d["title"]), row("핵심 메시지", d["message"]),
+         row("마지막 문구", d["last_line"]), row("색감·분위기", d["color"]), row("등장 캐릭터", d["character"]),
+         row("영상 형식", store.format_text(d))]
+    h.append('<div style="margin-top:.4rem"><b>장면 구성</b> · 30초</div>')
+    for i, sc in enumerate(d["scenes"]):
+        name, sec = store.SCENES[i]
+        if not (sc["look"].strip() or sc["caption"].strip() or sc["fx"].strip()):
+            continue
+        h.append(f'<div class="sc">{name} ({sec})<br>· 화면: {ESC(sc["look"]) or "-"}<br>· 자막: {ESC(sc["caption"]) or "-"}'
+                 + (f'<br>· 효과: {ESC(sc["fx"])}' if sc["fx"].strip() else "") + "</div>")
+    h += [row("첨부", ", ".join(a["name"] for a in atts)), row("발표 한마디", d["pitch"])]
     return '<div class="mx mx-card mx-sum">' + "".join(h) + "</div>"
 
 
@@ -199,7 +192,8 @@ def chat_html(msgs: list[dict], me: str) -> str:
     for m in msgs:
         who = "me" if m["who"] == me else "them"
         name = "관리팀" if m["who"] == "admin" else "분임"
-        out.append(f'<div class="{who}">{ESC(m["text"])}<small>{name} · {kst(m["at"])}</small></div>')
+        tag = "<b>✂ 수정 요청</b><br>" if m.get("kind") == "rev" else ""
+        out.append(f'<div class="{who}">{tag}{ESC(m["text"])}<small>{name} · {kst(m["at"])}</small></div>')
     return '<div class="mx mx-chat">' + "".join(out) + "</div>"
 
 
@@ -219,7 +213,7 @@ def home_view():
     md(BASE_CSS)
     S = store.get_settings()
     md(f'<div class="mx mx-card"><div class="mx-ev">{ESC(S["event"])}</div><div class="mx-h1">🎬 모션 영상 의뢰</div>'
-       f'<div class="mx-note">분임별로 영상 의뢰서를 쓰고, 완성된 영상을 여기서 바로 봅니다.<br>분임 QR 카드를 찍었다면 바로 들어와져요.</div></div>')
+       f'<div class="mx-note">분임별로 영상 기획서를 쓰고, 완성된 영상을 여기서 바로 봅니다.<br>분임 QR 카드를 찍으면 우리 분임 비밀번호 화면이 바로 열려요.</div></div>')
     pick = st.session_state.get("pick")
     if not pick:
         md('<div class="mx mx-sec">우리 분임 고르기</div>')
@@ -231,31 +225,63 @@ def home_view():
                     st.session_state["pick"] = g
                     st.rerun()
         return
-    md(f'<div class="mx mx-sec">{ESC(S["names"][pick - 1])} 코드 넣기</div>')
-    with st.form("login"):
-        code = st.text_input("분임 코드 (숫자 4자리 · 분임 카드에 적혀 있어요)", max_chars=4)
-        ok = st.form_submit_button("들어가기", type="primary", use_container_width=True)
-    if ok:
-        if store.check_code(pick, code, salt()):
-            st.session_state["g"] = pick
-            st.query_params.update({"g": str(pick), "k": code.strip()})
-            st.rerun()
-        st.error("코드가 맞지 않아요. 분임 카드의 숫자 4자리를 확인해 주세요.")
+    name = ESC(S["names"][pick - 1])
+    if store.has_password(pick):
+        md(f'<div class="mx mx-sec">{name} 비밀번호 넣기</div>')
+        with st.form("login"):
+            pw = st.text_input(f"우리 분임 비밀번호 (숫자 {store.PW_LEN}자리)", type="password", max_chars=store.PW_LEN)
+            ok = st.form_submit_button("들어가기", type="primary", use_container_width=True)
+        md('<div class="mx mx-note">비밀번호는 우리 분임에서 처음 들어온 분이 만들었어요. 모르면 분임원에게 물어보고, '
+           '잊어버렸으면 관리팀에 <b>초기화</b>를 부탁하세요.</div>')
+        if ok:
+            try:
+                enter(pick, store.login(pick, pw))
+            except store.StoreError as e:
+                st.error(str(e))
+    else:
+        md(f'<div class="mx mx-sec">{name} 비밀번호 만들기</div>')
+        md(f'<div class="mx mx-warn">🔑 <b>{name}</b>에 처음 들어오셨어요. 우리 분임만 쓸 <b>비밀번호(숫자 {store.PW_LEN}자리)</b>를 만들어 주세요.<br>'
+           '· 분임원끼리만 알려 주세요. 다른 휴대폰에서 들어올 때 필요해요.<br>· 평소 쓰는 비밀번호(은행·휴대폰 등)는 쓰지 마세요.<br>'
+           f'· <b>{name}</b>이 맞는지 꼭 확인해 주세요.</div>')
+        with st.form("make_pw"):
+            pw = st.text_input(f"새 비밀번호 (숫자 {store.PW_LEN}자리)", type="password", max_chars=store.PW_LEN)
+            pw2 = st.text_input("한 번 더 넣기", type="password", max_chars=store.PW_LEN)
+            ok = st.form_submit_button("만들고 들어가기", type="primary", use_container_width=True)
+        if ok:
+            try:
+                enter(pick, store.set_password(pick, pw, pw2))
+            except store.StoreError as e:
+                st.error(str(e))
     if st.button("← 다른 분임 고르기"):
         st.session_state.pop("pick", None)
+        st.query_params.clear()
         st.rerun()
 
 
+def enter(g: int, tok: str):
+    """로그인: 주소에 분임 번호와 로그인 표(k)를 붙여 새로 고침해도 그대로 들어와 있게."""
+    st.session_state.update({"g": g, "tok": tok})
+    st.session_state.pop("pick", None)
+    st.query_params.update({"g": str(g), "k": tok})
+    st.rerun()
+
+
+def leave():
+    for k in ("g", "tok", "pick"):
+        st.session_state.pop(k, None)
+    st.query_params.clear()
+
+
 # ───────────────────────── 분임 화면
-STEPS = ["① 의뢰서 쓰기", "② 제출", "③ 제작 중", "④ 완성"]
+STEPS = ["① 기획서 쓰기", "② 제출", "③ 제작 중", "④ 완성"]
 STEP_AT = {"draft": 0, "submitted": 1, "making": 2, "revise": 2, "done": 3}
 
 
 def group_header(g: int, R: dict, S: dict):
     at = STEP_AT[R["status"]]
     steps = "".join(f'<span class="{"on" if i == at else "ok" if i < at else ""}">{t}</span>' for i, t in enumerate(STEPS))
-    what = {"draft": "의뢰서를 쓰고 맨 아래 [제출하기]를 눌러 주세요.",
-            "submitted": "접수됐어요! 제작이 시작되기 전까지는 의뢰서를 더 고칠 수 있어요.",
+    what = {"draft": "기획서를 쓰고 맨 아래 [제출하기]를 눌러 주세요.",
+            "submitted": "접수됐어요! 제작이 시작되기 전까지는 기획서를 더 고칠 수 있어요.",
             "making": "관리팀이 영상을 만들고 있어요. 완성되면 [결과물]에 올라와요.",
             "revise": "수정 요청을 받았어요. 고친 영상이 [결과물]에 올라올 거예요.",
             "done": "영상이 완성됐어요! [결과물]에서 보고, 고칠 곳은 [수정 요청]에 남겨 주세요."}[R["status"]]
@@ -272,9 +298,9 @@ def group_view(g: int):
     if S["notice"].strip():
         md(f'<div class="mx mx-note" style="margin:-.2rem 0 .6rem">📢 {ESC(S["notice"])}</div>')
     res = store.results(g)
-    names = ["🎬 결과물", "📝 의뢰서", "💬 수정 요청·문의"] if res else ["📝 의뢰서", "🎬 결과물", "💬 수정 요청·문의"]
+    names = ["🎬 결과물", "📝 기획서", "💬 수정 요청·문의"] if res else ["📝 기획서", "🎬 결과물", "💬 수정 요청·문의"]
     tabs = dict(zip(names, st.tabs(names)))
-    with tabs["📝 의뢰서"]:
+    with tabs["📝 기획서"]:
         form_area(g)
     with tabs["🎬 결과물"]:
         results_area(g, res)
@@ -283,9 +309,7 @@ def group_view(g: int):
     watch_group(g)
     md('<div style="height:1.4rem"></div>')
     if st.button("다른 분임으로 바꾸기", key="logout"):
-        for k in ("g", "pick"):
-            st.session_state.pop(k, None)
-        st.query_params.clear()
+        leave()
         st.rerun()
 
 
@@ -293,7 +317,7 @@ def watch_group(g: int):
     """관리팀이 상태를 바꾸거나 결과물·답장을 올리면 화면을 새로 그림."""
     def token():
         R = store.get_request(g)
-        return (R["status"], len(store.results(g)), len(store.messages(g)))
+        return (R["status"], len(store.results(g)), len(store.messages(g)), store.session_token(g))
     st.session_state[f"tok_{g}"] = token()
 
     @st.fragment(run_every=8)
@@ -303,7 +327,7 @@ def watch_group(g: int):
     w()
 
 
-# 의뢰서: 쓰는 대로 저장(칸마다). 칸 이름 앞에 '판 번호(ep)'를 붙여, 장면을 넣거나 지우면 새 칸으로 다시 불러옴.
+# 기획서: 쓰는 대로 저장(칸마다). 칸 이름 앞에 '판 번호(ep)'를 붙여, [다른 휴대폰에서 쓴 내용 불러오기]를 누르면 새 칸으로 다시 불러옴.
 def _ep(g):
     return st.session_state.setdefault(f"ep_{g}", 0)
 
@@ -363,97 +387,34 @@ def form_area(g: int):
     if err:
         st.error(err)
     if R["status"] not in store.EDITABLE:
-        md('<div class="mx mx-warn">제작이 시작돼서 의뢰서는 더 고칠 수 없어요. 고칠 내용은 <b>[수정 요청·문의]</b>에 남겨 주세요.</div>')
+        md('<div class="mx mx-warn">제작이 시작돼서 기획서는 더 고칠 수 없어요. 고칠 곳은 <b>[수정 요청·문의]</b>에 장면 번호로 남겨 주세요.</div>')
         md(summary_html(d, store.attachments(g)))
         return
-    md('<div class="mx mx-warn">✏️ 쓰는 대로 저장돼요(칸을 벗어나면 저장). 한 분임에서 <b>한 사람이 대표로</b> 쓰는 걸 권해요.<br>'
+    md('<div class="mx mx-warn">✏️ <b>★ 칸만 채우면 돼요.</b> 쓰는 대로 저장돼요(칸을 벗어나면 저장). 한 분임에서 한 사람이 대표로 써 주세요.<br>'
        '🔒 외부 서버라서 업무 문서·보고서 같은 <b>내부자료는 적거나 올리지 마세요.</b></div>')
 
-    md('<div class="mx mx-sec"><i>1</i>기본 정보</div>')
-    w_text(g, d, "title", "영상 제목 *", placeholder="예: 3분임, 그 시절로!", max_chars=40)
-    w_radio(g, d, "use", "어디에 쓰나요?", store.USES, horizontal=True)
-    if st.session_state.get(_key(g, "use")) == "기타":
-        w_text(g, d, "use_etc", "쓰임새 직접 쓰기", max_chars=40)
-    w_radio(g, d, "length", "영상 길이", store.LENGTHS, horizontal=True)
-    if st.session_state.get(_key(g, "length")) == "직접 입력":
-        w_text(g, d, "length_custom", "길이 직접 쓰기", placeholder="예: 45초", max_chars=10)
-    w_radio(g, d, "ratio", "화면 비율", store.RATIOS)
-    w_radio(g, d, "quality", "화질", store.QUALITIES, horizontal=True)
-    w_radio(g, d, "loop", "재생 방식", store.LOOPS)
+    md('<div class="mx mx-sec"><i>1</i>우리 분임</div>')
+    cols = st.columns(2)
+    for j, (field, label) in enumerate(store.ROLES):
+        with cols[j % 2]:
+            w_text(g, d, field, label, max_chars=20, placeholder="이름")
 
-    md('<div class="mx mx-sec"><i>2</i>전하고 싶은 것</div>')
-    w_text(g, d, "message", "전하고 싶은 한 문장 *", area=True, height=80, max_chars=200,
-           placeholder="예: 우리 분임은 함께라서 더 즐겁다!")
-    w_text(g, d, "audience", "보는 사람", placeholder="예: 워크숍에 온 심사2국 직원", max_chars=60)
-    w_text(g, d, "feeling", "보고 나서 느꼈으면 하는 것", placeholder="예: 웃음, 뿌듯함, 설렘", max_chars=60)
-
-    md('<div class="mx mx-sec"><i>3</i>분위기와 디자인</div>')
-    k = _key(g, "mood")
-    if k not in st.session_state:
-        st.session_state[k] = [m for m in d["mood"] if m in store.MOODS]
-    st.pills("분위기 (여러 개 골라도 돼요)", store.MOODS, selection_mode="multi", key=k, on_change=_cb_field, args=(g, "mood", k))
-    w_radio(g, d, "style", "그림 스타일", store.STYLES, horizontal=True)
-    w_text(g, d, "color", "주인공 색", placeholder="예: 남색과 금색, 기관 색", max_chars=40)
-    w_radio(g, d, "font", "글꼴 느낌", store.FONTS, horizontal=True)
-    w_text(g, d, "ref", "참고할 느낌 (말로 설명)", placeholder="예: 옛날 운동회 포스터처럼", max_chars=120,
-           help="분위기만 참고해요. 유명 캐릭터·영화·광고를 똑같이 따라 만들지는 않아요.")
-    w_text(g, d, "avoid", "피하고 싶은 것", placeholder="예: 너무 어두운 색", max_chars=120)
-
-    tot, L = store.total_sec(d), store.length_sec(d)
-    gap = f" · 목표 {L}초" + (" ✔" if L and abs(tot - L) <= 2 else f" (차이 {tot - L:+d}초)" if L else "") if L else ""
-    md(f'<div class="mx mx-sec"><i>4</i>장면 구성 <span style="font-size:1rem;color:#6a5a45">합계 {tot}초{gap}</span></div>')
-    md('<div class="mx mx-note">한 칸이 한 장면이에요. 화면에 나올 글자는 띄어쓰기까지 <b>그대로</b> 적어 주세요.<br>'
-       '움직임 예: 서서히 나타남 · 옆에서 미끄러져 들어옴 · 통 튀어오름 · 한 자씩 타자 치듯 · 카메라가 다가감 · 반짝임</div>')
-    n = len(d["scenes"])
-    for i, s in enumerate(d["scenes"]):
-        with st.container(border=True, key=f"scene_{g}_{_ep(g)}_{i}"):
-            with st.container(key=f"row_sc_{g}_{_ep(g)}_{i}"):
-                c0, c1, c2, c3 = st.columns([3, 1, 1, 1])
-                c0.markdown(f'<div class="mx mx-sec" style="margin:.2rem 0">장면 {i + 1}</div>', unsafe_allow_html=True)
-                if c1.button("↑", key=f"up_{g}_{_ep(g)}_{i}", disabled=i == 0, help="위로"):
-                    if act(store.move_scene, g, i, -1):
-                        _bump(g)
-                        st.rerun(scope="fragment")
-                if c2.button("↓", key=f"dn_{g}_{_ep(g)}_{i}", disabled=i == n - 1, help="아래로"):
-                    if act(store.move_scene, g, i, 1):
-                        _bump(g)
-                        st.rerun(scope="fragment")
-                if c3.button("🗑", key=f"rm_{g}_{_ep(g)}_{i}", disabled=n == 1, help="이 장면 지우기"):
-                    if act(store.del_scene, g, i):
-                        _bump(g)
-                        st.rerun(scope="fragment")
-            for part, label, kind, kw in (
-                    ("sec", "길이(초)", "num", {}),
-                    ("text", "화면에 나올 글자 (그대로)", "area", {"height": 68, "max_chars": 200, "placeholder": "예: 2026 심사2국 워크숍"}),
-                    ("look", "보이는 모습", "area", {"height": 68, "max_chars": 300, "placeholder": "예: 하늘색 배경에 운동회 깃발"}),
-                    ("motion", "움직임 · 다음 장면으로 넘어가는 방식", "text", {"max_chars": 150, "placeholder": "예: 글자가 붓으로 쓰듯 한 자씩"})):
-                k = f"{_key(g, 'sc')}{i}_{part}"
-                if k not in st.session_state:
-                    st.session_state[k] = s[part]
-                if kind == "num":
-                    st.number_input(label, min_value=1, max_value=120, step=1, key=k, on_change=_cb_scene, args=(g, i, part, k))
-                elif kind == "area":
-                    st.text_area(label, key=k, on_change=_cb_scene, args=(g, i, part, k), **kw)
-                else:
-                    st.text_input(label, key=k, on_change=_cb_scene, args=(g, i, part, k), **kw)
-    if st.button("＋ 장면 추가", key=f"add_{g}", use_container_width=True, disabled=n >= 15):
-        if act(store.add_scene, g):
-            _bump(g)
-            st.rerun(scope="fragment")
-
-    md('<div class="mx mx-sec"><i>5</i>소리</div>')
-    w_radio(g, d, "music", "배경음악", store.YESNO_MUSIC, horizontal=True)
-    if st.session_state.get(_key(g, "music")) == store.YESNO_MUSIC[0]:
-        w_text(g, d, "music_mood", "음악 분위기", placeholder="예: 경쾌한 행진곡, 잔잔한 국악", max_chars=60,
-               help="새로 만든 곡을 넣어요. 기존 노래나 유명한 곡 멜로디는 쓸 수 없어요.")
-    w_text(g, d, "sfx", "효과음 (넣고 싶은 곳)", placeholder="예: 글자가 나올 때 '띠링'", max_chars=100)
-    w_radio(g, d, "narration", "내레이션 (사람 목소리)", store.NARR)
-
-    md('<div class="mx mx-sec"><i>6</i>넣을 자료와 받는 형태</div>')
-    md('<div class="mx mx-note">로고·사진·녹음 파일이 있으면 올려 주세요. <b>쓰여도 되는 로고, 찍힌 사람이 동의한 사진</b>만 올려 주세요.</div>')
+    md('<div class="mx mx-sec"><i>2</i>무엇을 만들까요</div>')
+    w_text(g, d, "topic", "★ 주제", placeholder="예: 작년과 올해 워크숍 비교", max_chars=60)
+    w_text(g, d, "title", "영상 제목", placeholder="예: 마타의 작년 vs 올해", max_chars=40)
+    w_text(g, d, "message", "★ 핵심 메시지 (한 문장)", area=True, height=70, max_chars=150,
+           placeholder="예: 작년엔 영상 하나에 2시간, 올해는 두 문장이면 끝")
+    w_text(g, d, "last_line", "★ 마지막 문구 (끝 화면 한 줄)", placeholder="예: 2026 서울세관 심사2국 워크숍, 지금 시작합니다", max_chars=60)
+    w_text(g, d, "color", "색감·분위기", placeholder="예: 작년은 회색, 올해는 하늘색·남색·금색", max_chars=80)
+    w_text(g, d, "character", "등장 캐릭터", placeholder="예: 마타 (골든리트리버)", max_chars=60,
+           help="캐릭터 그림이 있으면 아래 [캐릭터·로고 그림]에 올려 주세요. 그 캐릭터가 주인공이 돼요.")
+    w_radio(g, d, "format", "★ 영상 형식", store.FORMATS, horizontal=True)
+    if st.session_state.get(_key(g, "format")) == "기타":
+        w_text(g, d, "format_etc", "영상 형식 직접 쓰기", max_chars=30)
+    md('<div class="mx mx-note" style="margin-top:.4rem">캐릭터·로고 그림 (선택) · <b>쓰여도 되는 그림</b>만 올려 주세요.</div>')
     ck = f"upc_{g}"
     uk = f"up_{g}_{st.session_state.get(ck, 0)}"
-    st.file_uploader("자료 올리기", type=store.ATT_TYPES, accept_multiple_files=True, key=uk, on_change=_cb_upload, args=(g, uk, ck),
+    st.file_uploader("캐릭터·로고 그림 올리기", type=store.ATT_TYPES, accept_multiple_files=True, key=uk, on_change=_cb_upload, args=(g, uk, ck),
                      label_visibility="collapsed")
     for a in store.attachments(g):
         with st.container(key=f"row_att_{a['id']}"):
@@ -462,16 +423,26 @@ def form_area(g: int):
             if c2.button("🗑", key=f"att_rm_{a['id']}", help="지우기"):
                 store.del_attachment(g, a["id"])
                 st.rerun(scope="fragment")
-    k = _key(g, "hold_end")
-    if k not in st.session_state:
-        st.session_state[k] = d["hold_end"]
-    st.number_input("마지막 장면에서 멈춰 있을 시간(초) · 시상 뒤 화면을 세워 둘 때", min_value=0, max_value=30, step=1, key=k,
-                    on_change=_cb_field, args=(g, "hold_end", k))
-    k = _key(g, "cover")
-    if k not in st.session_state:
-        st.session_state[k] = d["cover"]
-    st.checkbox("마지막 장면 그림 파일(표지·포스터용)도 받기", key=k, on_change=_cb_field, args=(g, "cover", k))
-    w_text(g, d, "etc", "그 밖에 하고 싶은 말", area=True, height=80, max_chars=500)
+
+    md('<div class="mx mx-sec"><i>3</i>장면 구성 <span style="font-size:1rem;color:#6a5a45">30초 · 3~4장면</span></div>')
+    md('<div class="mx mx-note">효과는 "유리처럼 깨지며", "도장이 쾅"처럼 말로 적으면 돼요. ④는 비워도 돼요.</div>')
+    for i, sc in enumerate(d["scenes"]):
+        name, sec = store.SCENES[i]
+        with st.container(border=True, key=f"scene_{g}_{_ep(g)}_{i}"):
+            md(f'<div class="mx mx-sec" style="margin:.1rem 0 .2rem">{name} <span style="font-size:1rem;color:#6a5a45">{sec}</span></div>')
+            for part, label, kind, kw in (
+                    ("look", "★ 화면에 보일 것", "area", {"height": 70, "max_chars": 300, "placeholder": "예: 마타가 \"크레딧 부족\" 에러창에 파묻힘"}),
+                    ("caption", "★ 자막·문구", "text", {"max_chars": 80, "placeholder": "예: 작년, 영상 하나에 2시간"}),
+                    ("fx", "효과 (선택)", "text", {"max_chars": 80, "placeholder": "예: 오래된 비디오 느낌"})):
+                k = f"{_key(g, 'sc')}{i}_{part}"
+                if k not in st.session_state:
+                    st.session_state[k] = sc[part]
+                fn = st.text_area if kind == "area" else st.text_input
+                fn(label, key=k, on_change=_cb_scene, args=(g, i, part, k), **kw)
+
+    md('<div class="mx mx-sec"><i>4</i>발표 준비</div>')
+    w_text(g, d, "pitch", "발표 한마디 (기획 의도·관전 포인트)", area=True, height=80, max_chars=300)
+    md(f'<div class="mx mx-note">수정 요청은 영상이 나온 뒤 <b>[수정 요청·문의]</b>에서 최대 {store.MAX_REV}번 보낼 수 있어요.</div>')
 
     md('<div style="height:.6rem"></div>')
     if st.button("🔄 다른 휴대폰에서 쓴 내용 불러오기", key=f"reload_{g}", use_container_width=True):
@@ -479,7 +450,7 @@ def form_area(g: int):
         st.rerun(scope="fragment")
     miss = store.missing(store.get_request(g)["data"])
     if R["status"] == "submitted":
-        md('<div class="mx mx-warn" style="border-style:solid;border-color:#1f3f8f;background:#eef3ff">✅ 제출 완료! 지금 고치는 내용도 자동으로 관리팀에 보여요.</div>')
+        md('<div class="mx mx-warn" style="border-style:solid;border-color:#1f3f8f;background:#eef3ff">✅ 제출 완료! 제작이 시작되기 전까지 고치는 내용도 자동으로 관리팀에 보여요.</div>')
         return
     if miss:
         md(f'<div class="mx mx-note">제출하려면 이 칸을 채워 주세요: <b>{", ".join(miss)}</b></div>')
@@ -492,7 +463,7 @@ def results_area(g: int, res: list[dict]):
     if not res:
         R = store.get_request(g)
         md('<div class="mx mx-card mx-note">아직 결과물이 없어요. ' +
-           ("의뢰서를 제출하면 관리팀이 만들기 시작해요." if R["status"] == "draft" else "완성되면 여기에 바로 올라와요.") + "</div>")
+           ("기획서를 제출하면 관리팀이 만들기 시작해요." if R["status"] == "draft" else "완성되면 여기에 바로 올라와요.") + "</div>")
         return
     md('<div class="mx mx-warn">결과물은 <b>행사 동안만</b> 보관돼요. 필요하면 꼭 내려받아 두세요.</div>')
     latest = res[0]
@@ -506,16 +477,26 @@ def results_area(g: int, res: list[dict]):
 
 
 def chat_area(g: int):
-    R = store.get_request(g)
-    md('<div class="mx mx-note">고칠 곳은 <b>장면 번호</b>로 말해 주세요. 예: "3번 장면 글자를 더 크게", "2번 장면을 2초 짧게".</div>')
+    has_res = bool(store.results(g))
+    left = store.MAX_REV - store.rev_count(g)
+    md('<div class="mx mx-note">영상을 고칠 곳은 <b>장면 번호</b>로 적어 주세요. 예: "③ 자막을 더 크게", "② 장면을 더 밝게". '
+       f'전체를 다시 만들지 않고 그 부분만 고쳐요. 수정 요청은 <b>최대 {store.MAX_REV}번</b>이에요.</div>')
     md(chat_html(store.messages(g), "group"))
+    flash = st.session_state.pop(f"_sent_{g}", None)
+    if flash:
+        st.success(flash)
     with st.form(f"msg_{g}", clear_on_submit=True):
         t = st.text_area("보낼 내용", height=90, max_chars=1000, label_visibility="collapsed",
                          placeholder="수정 요청이나 궁금한 점을 적어 주세요")
-        ok = st.form_submit_button("보내기", type="primary", use_container_width=True)
-    if ok:
-        if act(store.add_message, g, "group", t):
-            st.success("보냈어요!" + (" 수정 요청으로 접수됐어요." if R["status"] == "done" else ""))
+        c1, c2 = st.columns(2)
+        rev = c1.form_submit_button(f"✂ 수정 요청 보내기 (남은 {max(0, left)}번)", type="primary", use_container_width=True,
+                                    disabled=not has_res or left <= 0)
+        ask = c2.form_submit_button("💬 문의 보내기", use_container_width=True)
+    if not has_res:
+        st.caption("수정 요청은 완성 영상이 올라온 뒤에 보낼 수 있어요. 궁금한 점은 [문의 보내기]로 물어보세요.")
+    if rev or ask:
+        if act(store.add_message, g, "group", t, "rev" if rev else "q"):
+            st.session_state[f"_sent_{g}"] = "수정 요청을 보냈어요. 고친 영상이 [결과물]에 올라올 거예요." if rev else "보냈어요!"
             st.rerun()
 
 
@@ -535,15 +516,15 @@ def admin_view():
     S = store.get_settings()
     md(f'<div class="mx mx-h1">{ESC(S["event"])} · 영상 의뢰 관리</div>')
     if not secret("admin_pin"):
-        st.error("Streamlit 설정(Secrets)에 admin_pin 이 없습니다. 지금은 임시 PIN 0000이고, 분임 코드도 누구나 계산할 수 있는 상태입니다. "
-                 "배포 화면의 Settings → Secrets에 admin_pin = \"숫자\"를 넣어 주세요.")
-    tabs = st.tabs(["📋 진행 현황", "🔑 분임 코드·QR", "⚙️ 설정", "💾 백업·초기화"])
+        st.error("Streamlit 설정(Secrets)에 admin_pin 이 없어서 관리 화면 PIN이 임시로 0000입니다. "
+                 "배포 화면의 Settings → Secrets에 admin_pin = \"7391\" 처럼 관리팀만 아는 숫자를 넣어 주세요.")
+    tabs = st.tabs(["📋 진행 현황", "🔑 분임 비밀번호·QR", "⚙️ 설정", "💾 백업·초기화"])
     with tabs[0]:
         overview()
         md("<hr>")
         detail()
     with tabs[1]:
-        codes_panel()
+        pw_panel()
     with tabs[2]:
         settings_panel()
     with tabs[3]:
@@ -557,10 +538,10 @@ def overview():
     for R in store.all_requests():
         g, d = R["g"], R["data"]
         nres, new = len(store.results(g)), store.unseen(g)
-        rows.append(f'<tr><td><b>{ESC(S["names"][g - 1])}</b></td><td>{ESC(d["title"]) or "<span style=color:#9a8a72>(제목 없음)</span>"}</td>'
-                    f'<td>{badge(R["status"])}</td><td>{len(d["scenes"])}장면 · {store.total_sec(d)}초</td><td>{nres}개</td>'
+        rows.append(f'<tr><td><b>{ESC(S["names"][g - 1])}</b></td><td>{ESC(d["title"] or d["topic"]) or "<span style=color:#9a8a72>(아직 없음)</span>"}</td>'
+                    f'<td>{badge(R["status"])}</td><td>{len(store.filled_scenes(d))}장면</td><td>{nres}개 · 수정 {store.rev_count(g)}/{store.MAX_REV}</td>'
                     f'<td>{f"<span class=new>새 글 {new}</span>" if new else ""}</td><td>{kst(R["updated_at"])}</td></tr>')
-    md('<table class="mx mx-tbl"><tr><th>분임</th><th>영상 제목</th><th>상태</th><th>장면</th><th>결과물</th><th>새 글</th><th>마지막 변경</th></tr>'
+    md('<table class="mx mx-tbl"><tr><th>분임</th><th>영상 제목</th><th>상태</th><th>장면</th><th>결과물·수정</th><th>새 글</th><th>마지막 변경</th></tr>'
        + "".join(rows) + "</table>")
     st.caption(f"10초마다 자동으로 새로 고칩니다 · {kst(time.time(), '%H:%M:%S')} 기준")
 
@@ -583,28 +564,28 @@ def detail():
             store.set_status(g, "done")
             st.rerun()
         if c3.button("↩ 분임이 다시 고치게", key=f"st_back_{g}", use_container_width=True, disabled=R["status"] == "draft",
-                     help="의뢰서 잠금을 풀고 '작성 중'으로 돌립니다"):
+                     help="기획서 잠금을 풀고 '작성 중'으로 돌립니다"):
             store.set_status(g, "draft")
             st.rerun()
     left, right = st.columns([1.1, 1], gap="large")
     with left:
-        md('<div class="mx mx-sec">Claude에게 보낼 요청문</div>')
+        md('<div class="mx mx-sec">Claude에게 보낼 요청문 <span style="font-size:1rem;color:#6a5a45">(부스 프롬프트 틀)</span></div>')
         if R["status"] == "draft":
             md('<div class="mx mx-note">아직 제출 전입니다(작성 중인 내용).</div>')
         md('<div class="mx mx-note">오른쪽 위 복사 버튼 → 새 Claude 대화창에 붙여 넣기. 아래 첨부 자료도 같이 올려 주세요.</div>')
         st.code(store.prompt_text(g, S), language=None, wrap_lines=True)
         rv = store.revision_text(g, S)
         if rv and store.results(g):
-            md('<div class="mx mx-sec">수정 요청문 <span style="font-size:1rem;color:#6a5a45">(만들었던 대화창에 이어서)</span></div>')
+            md(f'<div class="mx mx-sec">수정 요청문 <span style="font-size:1rem;color:#6a5a45">(만들었던 대화창에 이어서 · {store.rev_count(g)}/{store.MAX_REV}번째)</span></div>')
             st.code(rv, language=None, wrap_lines=True)
         atts = store.attachments(g)
-        md('<div class="mx mx-sec">분임이 올린 자료</div>')
+        md('<div class="mx mx-sec">분임이 올린 캐릭터·로고 그림</div>')
         if not atts:
             md('<div class="mx mx-note">없음</div>')
         for a in atts:
             st.download_button(f"📎 {a['name']} ({size_txt(a['size'])})", store.read_bytes(a["path"]), file_name=a["name"],
                                key=f"ad_att_{a['id']}", use_container_width=True)
-        with st.expander("의뢰서 보기 (사람이 읽기 좋게)"):
+        with st.expander("기획서 보기 (사람이 읽기 좋게)"):
             md(summary_html(d, atts))
     with right:
         md('<div class="mx mx-sec">결과물 올리기</div>')
@@ -656,33 +637,44 @@ def qr_cards_html(url: str, S: dict) -> str:
     import segno
     cards = []
     for g in range(1, store.N_GROUPS + 1):
-        code = store.group_code(g, salt())
-        link = f"{url}/?g={g}&k={code}"
+        link = f"{url}/?g={g}"
         qr = segno.make(link, error="m").svg_data_uri(scale=8, border=2, dark="#000000", light="#ffffff")
         name = ESC(S["names"][g - 1])
         cards.append(f'''<section class="card"><div class="ev">{ESC(S["event"])} · 모션 영상 의뢰</div><div class="nm">{name}</div>
 <img class="qr" src="{qr}" alt="QR"><ol><li>휴대폰 <b>카메라</b>로 QR 코드를 비춥니다.</li><li>뜨는 <b>주소</b>를 누르면 우리 분임 화면이 열립니다.</li>
-<li>의뢰서를 쓰고 <b>[제출하기]</b>. 완성 영상도 여기서 봅니다.</li></ol>
-<div class="ft">직접 들어갈 때: {ESC(url)} → {name} → 분임 코드 <b class="code">{code}</b> · 다른 분임과 바꿔 쓰지 마세요.</div></section>''')
+<li><b>처음 들어온 분</b>이 우리 분임 <b>비밀번호(숫자 4자리)</b>를 만들고, 분임원끼리 나눠 씁니다.</li>
+<li>기획서를 쓰고 <b>[제출하기]</b>. 완성 영상도 여기서 봅니다.</li></ol>
+<div class="ft">직접 들어갈 때: {ESC(url)} → {name} → 비밀번호 · 비밀번호를 잊으면 관리팀에 초기화를 부탁하세요.</div></section>''')
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>분임 QR 카드</title><style>
 @page{{size:A4;margin:12mm}}body{{margin:0;font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:#111;background:#fff}}
 .tip{{padding:10px 14px;margin:0 0 10px;background:#eef3ff;border:1px solid #c9d6f5;border-radius:8px;font-size:14px}}@media print{{.tip{{display:none}}}}
 .card{{height:128mm;box-sizing:border-box;border:1.5px dashed #9aa4b8;border-radius:6mm;padding:9mm 12mm;margin:0 0 8mm;display:grid;grid-template-columns:1fr 62mm;
 grid-template-rows:auto auto 1fr auto;column-gap:10mm;break-inside:avoid;page-break-inside:avoid}}.card:nth-of-type(2n){{break-after:page;page-break-after:always}}
 .ev{{grid-column:1/3;font-size:13pt;color:#3b4a6b;font-weight:700}}.nm{{grid-column:1/2;font-size:34pt;font-weight:800;margin-top:6mm}}
-.qr{{grid-column:2/3;grid-row:2/4;width:62mm;height:62mm;align-self:center}}ol{{grid-column:1/2;margin:6mm 0 0;padding-left:6mm;font-size:14pt;line-height:1.75;word-break:keep-all}}
-.ft{{grid-column:1/3;font-size:11.5pt;color:#555;border-top:1px solid #dde3ee;padding-top:3mm;margin-top:4mm}}.code{{font-size:15pt;color:#111;letter-spacing:2px}}
+.qr{{grid-column:2/3;grid-row:2/4;width:62mm;height:62mm;align-self:center}}ol{{grid-column:1/2;margin:5mm 0 0;padding-left:6mm;font-size:13pt;line-height:1.6;word-break:keep-all}}
+.ft{{grid-column:1/3;font-size:11.5pt;color:#555;border-top:1px solid #dde3ee;padding-top:3mm;margin-top:4mm}}
 </style></head><body><div class="tip">이 파일을 연 상태에서 <b>Ctrl + P</b>로 인쇄하세요. 한 장에 두 분임씩 나오고, 점선을 따라 자르면 됩니다. (이 안내는 인쇄되지 않습니다)</div>
 {"".join(cards)}</body></html>'''
 
 
-def codes_panel():
+def pw_panel():
     S = store.get_settings()
     url = base_url()
-    md('<div class="mx mx-note">분임 코드는 비밀값으로 계산해서 서버가 다시 켜져도 바뀌지 않습니다. 카드를 인쇄해 분임마다 나눠 주세요.</div>')
-    rows = "".join(f'<tr><td><b>{ESC(S["names"][g - 1])}</b></td><td style="font-size:1.3rem;letter-spacing:2px">{store.group_code(g, salt())}</td>'
-                   f'<td style="font-size:.85rem">{ESC(url)}/?g={g}&amp;k={store.group_code(g, salt())}</td></tr>' for g in range(1, store.N_GROUPS + 1))
-    md(f'<table class="mx mx-tbl"><tr><th>분임</th><th>코드</th><th>바로 들어가는 주소 (QR 내용)</th></tr>{rows}</table>')
+    info = store.password_info()
+    md('<div class="mx mx-note">분임 비밀번호는 <b>각 분임이 처음 들어올 때 직접</b> 만듭니다(숫자 4자리). 관리팀도 숫자는 볼 수 없습니다.<br>'
+       '분임이 비밀번호를 잊었거나 다른 분임이 잘못 만들었으면 <b>[🔄 초기화]</b> → 그 분임이 다음에 들어올 때 새로 만듭니다. '
+       '(이미 들어와 있던 휴대폰도 나가지니, 새 비밀번호를 분임원에게 다시 알려 주세요.)</div>')
+    for g in range(1, store.N_GROUPS + 1):
+        p = info.get(g)
+        st_txt = ("✅ 만듦 · " + kst(p["set_at"]) + (" · <b style='color:#cf4430'>잠깐 막힘(여러 번 틀림)</b>" if p["locked"] else "")) if p else "⏳ 아직 안 만듦"
+        with st.container(border=True, key=f"row_pw_{g}"):
+            c1, c2, c3 = st.columns([1.2, 3, 1.4], vertical_alignment="center")
+            c1.markdown(f'<div class="mx" style="font-size:1.15rem"><b>{ESC(S["names"][g - 1])}</b></div>', unsafe_allow_html=True)
+            c2.markdown(f'<div class="mx mx-note">{st_txt}<br><span style="font-size:.82rem">{ESC(url)}/?g={g}</span></div>', unsafe_allow_html=True)
+            with c3:
+                if p and confirm_button("🔄 초기화", f"pw_rm_{g}", f"{S['names'][g - 1]} 비밀번호를 지웁니다."):
+                    store.reset_password(g)
+                    st.rerun()
     if not url or "localhost" in url:
         st.warning("접속 주소를 알 수 없습니다. [설정] 탭에 앱 주소(…streamlit.app)를 넣어 주세요.")
         return
@@ -697,7 +689,7 @@ def settings_panel():
         ev = st.text_input("행사 이름", S["event"], max_chars=30)
         cols = st.columns(4)
         names = [cols[i % 4].text_input(f"{i + 1}번 분임 이름", S["names"][i], max_chars=16) for i in range(store.N_GROUPS)]
-        notice = st.text_area("분임 화면 안내 문구", S["notice"], max_chars=200, help="예: 의뢰서 제출 마감 11/12(목) 18시")
+        notice = st.text_area("분임 화면 안내 문구", S["notice"], max_chars=200, help="예: 기획서 제출 마감 11/12(목) 18시")
         url = st.text_input("앱 주소 (QR 카드에 들어감)", S["public_url"], placeholder="https://….streamlit.app")
         if st.form_submit_button("저장", type="primary"):
             store.save_settings(event=ev.strip() or "워크숍", names=names, notice=notice, public_url=url.strip().rstrip("/"))
@@ -706,9 +698,9 @@ def settings_panel():
 
 
 def backup_panel():
-    md('<div class="mx mx-note">무료 서버는 다시 켜지면 의뢰서·결과물이 지워질 수 있습니다. 중간중간 백업 파일을 받아 두고, '
+    md('<div class="mx mx-note">무료 서버는 다시 켜지면 기획서·결과물이 지워질 수 있습니다. 중간중간 백업 파일을 받아 두고, '
        '완성 영상 원본은 관리팀 노트북에도 꼭 보관해 주세요. (백업 파일에는 영상이 들어가지 않습니다)</div>')
-    st.download_button(f"💾 의뢰서·대화 백업 내려받기 ({kst(time.time(), '%H:%M')} 기준)", store.backup(),
+    st.download_button(f"💾 기획서·대화 백업 내려받기 ({kst(time.time(), '%H:%M')} 기준)", store.backup(),
                        file_name=f"영상의뢰_백업_{kst(time.time(), '%m%d_%H%M')}.json", mime="application/json", use_container_width=True)
     up = st.file_uploader("백업 파일로 되살리기", type=["json"], key="restore")
     if up and st.button("이 백업으로 되살리기", type="primary"):
@@ -721,7 +713,7 @@ def backup_panel():
         st.download_button(f"⬇ 결과물 묶음 내려받기 ({size_txt(len(st.session_state['zip']))})", st.session_state["zip"],
                            file_name=f"분임_영상_{kst(time.time(), '%m%d')}.zip", mime="application/zip", use_container_width=True)
     md("<hr>")
-    if confirm_button("🧹 모두 지우고 처음부터 (리허설 뒤에)", "reset", "모든 의뢰서·자료·결과물·대화를 지웁니다. 설정(분임 이름 등)은 남습니다."):
+    if confirm_button("🧹 모두 지우고 처음부터 (리허설 뒤에)", "reset", "모든 기획서·자료·결과물·대화와 분임 비밀번호를 지웁니다. 설정(분임 이름 등)은 남습니다."):
         store.reset_all()
         st.success("초기화했습니다.")
 
@@ -732,12 +724,12 @@ def screen_view():
     S = store.get_settings()
     rid = store.screen_get().get("rid")
     r = store.get_result(rid) if rid else None
-    # 영상을 트는 중에는 '틀 영상'이 바뀔 때만 다시 그림(분임이 의뢰서를 고쳐도 영상이 처음부터 다시 시작하지 않게)
+    # 영상을 트는 중에는 '틀 영상'이 바뀔 때만 다시 그림(분임이 기획서를 고쳐도 영상이 처음부터 다시 시작하지 않게)
     tok = (lambda: f"play|{store.screen_get()}") if r else store.board_token
     st.session_state["scr_tok"] = tok()
     if r:
         R = store.get_request(r["g"])
-        md(f'<div class="sc-head"><b>{ESC(S["names"][r["g"] - 1])}</b><span>{ESC(R["data"]["title"])}</span></div>')
+        md(f'<div class="sc-head"><b>{ESC(S["names"][r["g"] - 1])}</b><span>{ESC(R["data"]["title"] or R["data"]["topic"])}</span></div>')
         if r["video"]:
             st.video(r["path"], format="video/" + ("quicktime" if r["ext"] == "mov" else r["ext"]), autoplay=True)
         else:
@@ -748,7 +740,7 @@ def screen_view():
         for R in store.all_requests():
             g = R["g"]
             cards.append(f'<div class="sc-card"><div class="n">{ESC(S["names"][g - 1])} {badge(R["status"])}</div>'
-                         f'<div class="t">{ESC(R["data"]["title"])}</div></div>')
+                         f'<div class="t">{ESC(R["data"]["title"] or R["data"]["topic"])}</div></div>')
         md('<div class="sc-board">' + "".join(cards) + "</div>")
 
     @st.fragment(run_every=2)
@@ -767,13 +759,20 @@ elif view == "screen":
     screen_view()
 else:
     g = st.session_state.get("g")
-    if not g and qp.get("g") and qp.get("k"):
+    if g and not store.check_token(int(g), st.session_state.get("tok")):
+        leave()                      # 관리팀이 비밀번호를 초기화했으면 다시 들어오게
+        st.session_state["pick"] = g
+        g = None
+    if not g and qp.get("g"):
         try:
             gq = int(qp.get("g"))
         except ValueError:
             gq = 0
-        if store.check_code(gq, qp.get("k"), salt()):
-            st.session_state["g"] = g = gq
+        if store.check_token(gq, qp.get("k")):
+            st.session_state.update({"g": gq, "tok": qp.get("k")})
+            g = gq
+        elif 1 <= gq <= store.N_GROUPS:
+            st.session_state["pick"] = gq     # QR 카드로 들어옴 → 그 분임 비밀번호 화면
     if g:
         group_view(int(g))
     else:

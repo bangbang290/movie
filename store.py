@@ -1,8 +1,8 @@
-"""워크숍 모션 영상 의뢰 — 저장소(SQLite + 파일 폴더).
+"""워크숍 모션 영상 의뢰(AI 모션그래픽 광고제) — 저장소(SQLite + 파일 폴더).
 
-  분임(1~7)마다 의뢰서 1장 · 첨부 자료 · 결과물(영상·그림) · 수정 요청 대화를 보관합니다.
+  분임(1~7)마다 분임 기획서 1장 · 첨부 자료 · 결과물(영상·그림) · 수정 요청(최대 2번)·문의를 보관합니다.
   상태 흐름: draft(작성 중) → submitted(접수) → making(제작 중) → done(완료) ⇄ revise(수정 요청)
-  분임 코드는 비밀값(Secrets)으로 계산하므로 서버가 다시 켜져도 바뀌지 않습니다.
+  분임 비밀번호는 분임이 처음 들어올 때 직접 만듭니다(숫자 4자리, 해시로만 보관 · 관리팀은 초기화만 가능).
 """
 from __future__ import annotations
 
@@ -32,16 +32,12 @@ STATUS = {
 }
 EDITABLE = ("draft", "submitted")
 
-USES = ["행사 오프닝", "시작 전 대기 화면", "분임 소개", "시상·발표", "홍보", "기타"]
-LENGTHS = ["15초", "30초", "1분", "직접 입력"]
-RATIOS = ["가로 16:9 (프로젝터·TV)", "세로 9:16 (휴대폰)", "정사각 1:1"]
-QUALITIES = ["FHD (보통)", "4K (큰 스크린)"]
-LOOPS = ["한 번만 재생", "계속 반복 (끝과 처음이 자연스럽게 이어짐)"]
-MOODS = ["고급스럽고 웅장하게", "밝고 경쾌하게", "레트로", "귀엽게", "차분하게", "뉴스·다큐처럼", "감동적으로", "웃기게"]
-STYLES = ["글자 위주", "단순한 도형·아이콘", "일러스트(그림)", "3D 입체", "상관없음"]
-FONTS = ["상관없음", "붓글씨", "명조 (붓끝 있는 글자)", "고딕 (깔끔한 글자)", "손글씨"]
-YESNO_MUSIC = ["배경음악 넣기", "음악 없음"]
-NARR = ["내레이션 없음", "내레이션 있음 (녹음 파일 첨부)"]
+# 분임 기획서(AI 모션그래픽 광고제)와 같은 칸
+FORMATS = ["웅장한 광고", "영화 예고편", "뉴스 속보", "인포그래픽", "귀여운 애니메이션", "기타"]
+SCENES = [("① 시작", "0~5초"), ("② 전개", "5~15초"), ("③ 강조", "15~25초"), ("④ 마무리", "25~30초")]
+ROLES = [("director", "감독"), ("writer", "작가"), ("prompter", "프롬프트 담당"), ("presenter", "발표자")]
+MAX_REV = 2          # 수정 요청은 최대 2번
+LENGTH = "30초"
 
 ATT_TYPES = ["png", "jpg", "jpeg", "gif", "webp", "svg", "pdf", "mp3", "wav", "m4a", "mp4", "mov"]
 RES_TYPES = ["mp4", "mov", "webm", "png", "jpg", "jpeg", "gif", "webp"]
@@ -54,42 +50,39 @@ class StoreError(Exception):
 
 def blank_request() -> dict:
     return {
-        "title": "", "use": USES[0], "use_etc": "", "length": LENGTHS[1], "length_custom": "",
-        "ratio": RATIOS[0], "quality": QUALITIES[0], "loop": LOOPS[0],
-        "message": "", "audience": "", "feeling": "",
-        "mood": [], "style": STYLES[-1], "color": "", "font": FONTS[0], "ref": "", "avoid": "",
-        "scenes": [blank_scene() for _ in range(3)],
-        "music": YESNO_MUSIC[0], "music_mood": "", "sfx": "", "narration": NARR[0],
-        "hold_end": 0, "cover": False, "etc": "",
+        "director": "", "writer": "", "prompter": "", "presenter": "",
+        "topic": "", "title": "", "message": "", "last_line": "", "color": "", "character": "",
+        "format": FORMATS[0], "format_etc": "",
+        "scenes": [blank_scene() for _ in SCENES],
+        "pitch": "",
     }
 
 
 def blank_scene() -> dict:
-    return {"sec": 5, "text": "", "look": "", "motion": ""}
+    return {"look": "", "caption": "", "fx": ""}
 
 
 def norm_request(d: dict | None) -> dict:
     out = blank_request()
     for k, v in (d or {}).items():
-        if k in out:
-            out[k] = v
-    if not isinstance(out["mood"], list):
-        out["mood"] = []
-    sc = out["scenes"] if isinstance(out["scenes"], list) else []
-    out["scenes"] = [dict(blank_scene(), **{k: v for k, v in s.items() if k in blank_scene()}) for s in sc if isinstance(s, dict)]
-    if not out["scenes"]:
-        out["scenes"] = [blank_scene()]
-    for s in out["scenes"]:
-        try:
-            s["sec"] = max(1, min(120, int(s["sec"])))
-        except (TypeError, ValueError):
-            s["sec"] = 5
-    try:
-        out["hold_end"] = max(0, min(30, int(out["hold_end"])))
-    except (TypeError, ValueError):
-        out["hold_end"] = 0
-    out["cover"] = bool(out["cover"])
+        if k in out and k != "scenes":
+            out[k] = v if isinstance(v, str) else str(v)
+    sc = (d or {}).get("scenes")
+    sc = sc if isinstance(sc, list) else []
+    for i in range(len(SCENES)):
+        if i < len(sc) and isinstance(sc[i], dict):
+            out["scenes"][i] = {k: str(sc[i].get(k, "") or "") for k in blank_scene()}
+    if out["format"] not in FORMATS:
+        out["format"] = FORMATS[0]
     return out
+
+
+def format_text(d: dict) -> str:
+    return (d["format_etc"].strip() or "기타") if d["format"] == "기타" else d["format"]
+
+
+def filled_scenes(d: dict) -> list[tuple[int, dict]]:
+    return [(i, s) for i, s in enumerate(d["scenes"]) if s["look"].strip() or s["caption"].strip()]
 
 
 # ───────────────────────── DB
@@ -123,8 +116,11 @@ def init():
                     "CREATE TABLE IF NOT EXISTS req (g INTEGER PRIMARY KEY, data TEXT, status TEXT, submitted_at REAL, updated_at REAL)",
                     "CREATE TABLE IF NOT EXISTS att (id INTEGER PRIMARY KEY AUTOINCREMENT, g INTEGER, name TEXT, path TEXT, size INTEGER, at REAL)",
                     "CREATE TABLE IF NOT EXISTS res (id INTEGER PRIMARY KEY AUTOINCREMENT, g INTEGER, name TEXT, path TEXT, size INTEGER, note TEXT, at REAL)",
-                    "CREATE TABLE IF NOT EXISTS msg (id INTEGER PRIMARY KEY AUTOINCREMENT, g INTEGER, who TEXT, text TEXT, at REAL, seen INTEGER DEFAULT 0)"):
+                    "CREATE TABLE IF NOT EXISTS msg (id INTEGER PRIMARY KEY AUTOINCREMENT, g INTEGER, who TEXT, text TEXT, at REAL, seen INTEGER DEFAULT 0)",
+                    "CREATE TABLE IF NOT EXISTS pw (g INTEGER PRIMARY KEY, hash TEXT, salt TEXT, set_at REAL, fails INTEGER DEFAULT 0, lock_until REAL DEFAULT 0)"):
             c.execute(sql)
+        if "kind" not in [r["name"] for r in c.execute("PRAGMA table_info(msg)")]:
+            c.execute("ALTER TABLE msg ADD COLUMN kind TEXT DEFAULT 'q'")
         for g in range(1, N_GROUPS + 1):
             c.execute("INSERT OR IGNORE INTO req(g, data, status, submitted_at, updated_at) VALUES (?,?,?,?,?)",
                       (g, json.dumps(blank_request(), ensure_ascii=False), "draft", None, time.time()))
@@ -144,7 +140,7 @@ def default_settings() -> dict:
     return {
         "event": "심사2국 워크숍",
         "names": [f"{i}분임" for i in range(1, N_GROUPS + 1)],
-        "notice": "의뢰서는 쓰는 대로 저장됩니다. 다 쓰면 맨 아래 [제출하기]를 눌러 주세요.",
+        "notice": "★ 칸만 채우면 돼요. 20분 안에 쓰고 맨 아래 [제출하기]를 눌러 주세요.",
         "public_url": "",
     }
 
@@ -175,17 +171,106 @@ def gname(g: int, S: dict | None = None) -> str:
     return S["names"][g - 1]
 
 
-# ───────────────────────── 분임 코드 (비밀값으로 계산 → 서버가 다시 켜져도 같음)
-def group_code(g: int, salt: str) -> str:
-    h = hashlib.sha256(f"motion|{salt}|{g}".encode("utf-8")).hexdigest()
-    return str(1000 + int(h, 16) % 9000)
+# ───────────────────────── 분임 비밀번호 (분임이 직접 만듦)
+PW_LEN = 4
+MAX_FAILS = 5        # 연속으로 이만큼 틀리면
+LOCK_SEC = 30        # 잠깐 막기
 
 
-def check_code(g: int, code: str, salt: str) -> bool:
-    return 1 <= g <= N_GROUPS and str(code).strip() == group_code(g, salt)
+def _pw_hash(pw: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), bytes.fromhex(salt), 60000).hex()
 
 
-# ───────────────────────── 의뢰서
+def _check_pw_form(pw: str):
+    pw = str(pw or "").strip()
+    if not (len(pw) == PW_LEN and pw.isascii() and pw.isdigit()):
+        raise StoreError(f"비밀번호는 숫자 {PW_LEN}자리로 넣어 주세요.")
+    return pw
+
+
+def _pw_row(c, g):
+    return c.execute("SELECT * FROM pw WHERE g=?", (g,)).fetchone()
+
+
+def has_password(g: int) -> bool:
+    c = _connect()
+    try:
+        return _pw_row(c, g) is not None
+    finally:
+        c.close()
+
+
+def _token_of(row) -> str | None:
+    return hashlib.sha256(f"tok|{row['hash']}".encode()).hexdigest()[:16] if row else None
+
+
+def session_token(g: int) -> str | None:
+    """로그인 유지용 표(주소 k=에 들어감). 비밀번호 자체가 아니고, 비밀번호가 바뀌면 같이 바뀜."""
+    c = _connect()
+    try:
+        return _token_of(_pw_row(c, g))
+    finally:
+        c.close()
+
+
+def check_token(g: int, tok) -> bool:
+    return bool(tok) and 1 <= g <= N_GROUPS and session_token(g) == str(tok)
+
+
+def set_password(g: int, pw: str, pw2: str) -> str:
+    """분임이 처음 들어올 때 비밀번호 만들기. 로그인 표를 돌려줌."""
+    if not 1 <= g <= N_GROUPS:
+        raise StoreError("분임 번호가 맞지 않아요.")
+    pw = _check_pw_form(pw)
+    if pw != str(pw2 or "").strip():
+        raise StoreError("두 번 넣은 비밀번호가 서로 달라요. 다시 넣어 주세요.")
+    salt = os.urandom(8).hex()
+    with _tx() as c:
+        if _pw_row(c, g):
+            raise StoreError("방금 다른 분임원이 비밀번호를 먼저 만들었어요. 그 비밀번호로 들어와 주세요.")
+        c.execute("INSERT INTO pw(g, hash, salt, set_at, fails, lock_until) VALUES (?,?,?,?,0,0)", (g, _pw_hash(pw, salt), salt, time.time()))
+        return _token_of(_pw_row(c, g))
+
+
+def login(g: int, pw: str) -> str:
+    """비밀번호 확인. 맞으면 로그인 표를 돌려줌."""
+    now = time.time()
+    with _tx() as c:
+        row = _pw_row(c, g)
+        if not row:
+            raise StoreError("아직 비밀번호가 없어요. 새로 만들어 주세요.")
+        if row["lock_until"] and row["lock_until"] > now:
+            raise StoreError(f"여러 번 틀려서 잠깐 막혔어요. {int(row['lock_until'] - now) + 1}초 뒤에 다시 해 주세요.")
+        if _pw_hash(str(pw or "").strip(), row["salt"]) == row["hash"]:
+            c.execute("UPDATE pw SET fails=0, lock_until=0 WHERE g=?", (g,))
+            return _token_of(row)
+        fails = (row["fails"] or 0) + 1
+        if fails >= MAX_FAILS:
+            c.execute("UPDATE pw SET fails=0, lock_until=? WHERE g=?", (now + LOCK_SEC, g))
+            msg = f"비밀번호가 {MAX_FAILS}번 틀려서 {LOCK_SEC}초 동안 막아요. 잊었으면 관리팀에 초기화를 부탁하세요."
+        else:
+            c.execute("UPDATE pw SET fails=? WHERE g=?", (fails, g))
+            msg = f"비밀번호가 맞지 않아요. ({fails}/{MAX_FAILS})"
+    raise StoreError(msg)
+
+
+def reset_password(g: int):
+    """관리팀: 비밀번호 지우기 → 그 분임이 다음에 들어올 때 새로 만듦(이미 들어와 있던 휴대폰도 나가짐)."""
+    with _tx() as c:
+        c.execute("DELETE FROM pw WHERE g=?", (g,))
+
+
+def password_info() -> dict[int, dict]:
+    c = _connect()
+    try:
+        rows = {r["g"]: {"set_at": r["set_at"], "locked": bool(r["lock_until"] and r["lock_until"] > time.time())}
+                for r in c.execute("SELECT * FROM pw")}
+    finally:
+        c.close()
+    return rows
+
+
+# ───────────────────────── 기획서
 def get_request(g: int) -> dict:
     c = _connect()
     try:
@@ -218,11 +303,11 @@ def _save(c, g, data, status=None):
 
 def _editable(status):
     if status not in EDITABLE:
-        raise StoreError("제작이 시작돼서 의뢰서를 고칠 수 없어요. 고칠 내용은 [수정 요청]에 남겨 주세요.")
+        raise StoreError("제작이 시작돼서 기획서를 고칠 수 없어요. 고칠 내용은 [수정 요청]에 남겨 주세요.")
 
 
 def set_field(g: int, field: str, value):
-    """의뢰서 한 칸 저장(쓰는 대로 자동 저장)."""
+    """기획서 한 칸 저장(쓰는 대로 자동 저장)."""
     if field not in blank_request() or field == "scenes":
         raise StoreError("알 수 없는 칸입니다.")
     with _tx() as c:
@@ -244,48 +329,19 @@ def set_scene(g: int, i: int, part: str, value):
         _save(c, g, norm_request(d))
 
 
-def add_scene(g: int):
-    with _tx() as c:
-        d, st = _load(c, g)
-        _editable(st)
-        if len(d["scenes"]) >= 15:
-            raise StoreError("장면은 15개까지 넣을 수 있어요.")
-        d["scenes"].append(blank_scene())
-        _save(c, g, d)
-
-
-def del_scene(g: int, i: int):
-    with _tx() as c:
-        d, st = _load(c, g)
-        _editable(st)
-        if len(d["scenes"]) <= 1:
-            raise StoreError("장면은 하나 이상 있어야 해요.")
-        if 0 <= i < len(d["scenes"]):
-            d["scenes"].pop(i)
-        _save(c, g, d)
-
-
-def move_scene(g: int, i: int, delta: int):
-    with _tx() as c:
-        d, st = _load(c, g)
-        _editable(st)
-        j = i + delta
-        if 0 <= i < len(d["scenes"]) and 0 <= j < len(d["scenes"]):
-            d["scenes"][i], d["scenes"][j] = d["scenes"][j], d["scenes"][i]
-        _save(c, g, d)
-
-
 def missing(d: dict) -> list[str]:
-    """제출 전에 꼭 채워야 하는 칸."""
+    """제출 전에 꼭 채워야 하는 칸(기획서의 ★ 칸)."""
     out = []
-    if not str(d["title"]).strip():
-        out.append("영상 제목")
-    if not str(d["message"]).strip():
-        out.append("전하고 싶은 한 문장")
-    if not any(str(s["text"]).strip() or str(s["look"]).strip() for s in d["scenes"]):
-        out.append("장면 구성 (한 장면 이상)")
-    if d["length"] == "직접 입력" and not str(d["length_custom"]).strip():
-        out.append("영상 길이")
+    if not d["topic"].strip():
+        out.append("주제")
+    if not d["message"].strip():
+        out.append("핵심 메시지")
+    if not d["last_line"].strip():
+        out.append("마지막 문구")
+    if d["format"] == "기타" and not d["format_etc"].strip():
+        out.append("영상 형식(기타)")
+    if len(filled_scenes(d)) < 3:
+        out.append("장면 구성 (3장면 이상)")
     return out
 
 
@@ -304,21 +360,6 @@ def set_status(g: int, status: str):
         raise StoreError("알 수 없는 상태입니다.")
     with _tx() as c:
         c.execute("UPDATE req SET status=?, updated_at=? WHERE g=?", (status, time.time(), g))
-
-
-def total_sec(d: dict) -> int:
-    return sum(int(s["sec"]) for s in d["scenes"])
-
-
-def length_sec(d: dict) -> int | None:
-    m = {"15초": 15, "30초": 30, "1분": 60}
-    if d["length"] in m:
-        return m[d["length"]]
-    n = re.findall(r"\d+", str(d["length_custom"]))
-    if not n:
-        return None
-    v = int(n[0])
-    return v * 60 if "분" in str(d["length_custom"]) and "초" not in str(d["length_custom"]) else v
 
 
 # ───────────────────────── 파일
@@ -428,18 +469,26 @@ def read_bytes(path: str) -> bytes:
 
 
 # ───────────────────────── 수정 요청 · 대화
-def add_message(g: int, who: str, text: str):
+def add_message(g: int, who: str, text: str, kind: str = "q"):
+    """kind: 'rev' = 수정 요청(완성본이 있을 때, 최대 2번) · 'q' = 문의·답장."""
     text = str(text).strip()
     if not text:
         raise StoreError("내용을 적어 주세요.")
-    if who not in ("group", "admin"):
+    if who not in ("group", "admin") or kind not in ("rev", "q"):
         raise StoreError("잘못된 요청입니다.")
     with _tx() as c:
-        c.execute("INSERT INTO msg(g, who, text, at, seen) VALUES (?,?,?,?,?)", (g, who, text[:2000], time.time(), 1 if who == "admin" else 0))
-        if who == "group":
-            st = c.execute("SELECT status FROM req WHERE g=?", (g,)).fetchone()["status"]
-            if st == "done":
-                c.execute("UPDATE req SET status='revise', updated_at=? WHERE g=?", (time.time(), g))
+        if kind == "rev":
+            if who != "group":
+                raise StoreError("수정 요청은 분임만 보낼 수 있습니다.")
+            if not c.execute("SELECT COUNT(*) n FROM res WHERE g=?", (g,)).fetchone()["n"]:
+                raise StoreError("완성된 영상이 올라온 뒤에 수정 요청을 보낼 수 있어요.")
+            used = c.execute("SELECT COUNT(*) n FROM msg WHERE g=? AND kind='rev'", (g,)).fetchone()["n"]
+            if used >= MAX_REV:
+                raise StoreError(f"수정 요청은 {MAX_REV}번까지예요. 더 필요하면 [문의]로 관리팀에 말해 주세요.")
+        c.execute("INSERT INTO msg(g, who, text, at, seen, kind) VALUES (?,?,?,?,?,?)",
+                  (g, who, text[:2000], time.time(), 1 if who == "admin" else 0, kind))
+        if kind == "rev":
+            c.execute("UPDATE req SET status='revise', updated_at=? WHERE g=?", (time.time(), g))
 
 
 def messages(g: int) -> list[dict]:
@@ -449,6 +498,10 @@ def messages(g: int) -> list[dict]:
     finally:
         c.close()
     return [dict(r) for r in rows]
+
+
+def rev_count(g: int) -> int:
+    return sum(1 for m in messages(g) if m.get("kind") == "rev")
 
 
 def unseen(g: int) -> int:
@@ -465,10 +518,10 @@ def mark_seen(g: int):
 
 
 def pending_revisions(g: int) -> list[dict]:
-    """마지막 결과물 이후에 분임이 남긴 요청."""
+    """마지막 결과물 이후에 분임이 보낸 수정 요청."""
     rs = results(g)
     last = rs[0]["at"] if rs else 0
-    return [m for m in messages(g) if m["who"] == "group" and m["at"] > last]
+    return [m for m in messages(g) if m.get("kind") == "rev" and m["at"] > last]
 
 
 # ───────────────────────── 스크린(프로젝터)에 틀 것
@@ -499,90 +552,56 @@ def board_token() -> str:
 
 
 # ───────────────────────── Claude에게 보낼 요청문
+def _eul(word: str) -> str:
+    """받침이 있으면 '을', 없으면 '를'."""
+    ch = word.strip()[-1:] if word.strip() else ""
+    if ch and "가" <= ch <= "힣":
+        return "을" if (ord(ch) - 0xAC00) % 28 else "를"
+    return "을(를)"
+
+
 def prompt_text(g: int, S: dict | None = None) -> str:
+    """제작 부스 프롬프트 틀에 기획서를 채운 글(Claude 대화창에 그대로 붙여 넣기)."""
     S = S or get_settings()
-    R = get_request(g)
-    d = R["data"]
-    L = length_sec(d)
-    length = d["length_custom"] if d["length"] == "직접 입력" else d["length"]
-    use = d["use_etc"] if d["use"] == "기타" and str(d["use_etc"]).strip() else d["use"]
-    ratio = d["ratio"].split(" (")[0]
-    res = "3840×2160" if d["quality"].startswith("4K") else "1920×1080"
-    if ratio.startswith("세로"):
-        res = "2160×3840" if d["quality"].startswith("4K") else "1080×1920"
-    elif ratio.startswith("정사각"):
-        res = "2160×2160" if d["quality"].startswith("4K") else "1080×1080"
+    d = get_request(g)["data"]
     atts = attachments(g)
-    lines = [
-        f"아래 의뢰서대로 모션 영상을 만들어 줘. ({S['event']} · {gname(g, S)})",
-        "",
-        "[만들 때 지킬 것]",
-        f"- 결과물: mp4 영상, {ratio}, {res}, 길이 약 {length}" + (" · 끝과 처음이 자연스럽게 이어지게(반복 재생용)" if d["loop"].startswith("계속") else ""),
-        "- 장면별 미리보기 그림을 먼저 보여 주고, 확인하면 영상으로 만들어 줘.",
-        "- 배경음악은 새로 만든 곡으로. 기존 노래·유명한 곡 멜로디는 쓰지 마.",
-        "- 유명 캐릭터·영화·게임 그림이나 다른 회사 로고·디자인을 따라 하지 말고 새로 그려 줘.",
-        "- 관공서 행사라서 욱일기처럼 보일 수 있는 햇살(방사선) 무늬는 쓰지 마.",
-        "- 화면에 나올 글자는 아래 적은 그대로(띄어쓰기 포함) 넣어 줘.",
-        "",
-        "[1. 기본 정보]",
-        f"- 영상 제목: {d['title']}",
-        f"- 쓰임새: {use}",
-        f"- 길이: {length}",
-        f"- 화면: {d['ratio']} · {d['quality']}",
-        f"- 재생: {d['loop']}",
-        "",
-        "[2. 전하고 싶은 것]",
-        f"- 핵심 한 문장: {d['message']}",
-    ]
-    if str(d["audience"]).strip():
-        lines.append(f"- 보는 사람: {d['audience']}")
-    if str(d["feeling"]).strip():
-        lines.append(f"- 보고 느꼈으면 하는 것: {d['feeling']}")
-    lines += ["", "[3. 분위기와 디자인]"]
-    if d["mood"]:
-        lines.append(f"- 분위기: {', '.join(d['mood'])}")
-    lines.append(f"- 그림 스타일: {d['style']}")
-    if str(d["color"]).strip():
-        lines.append(f"- 주인공 색: {d['color']}")
-    lines.append(f"- 글꼴 느낌: {d['font']}")
-    if str(d["ref"]).strip():
-        lines.append(f"- 참고할 느낌(분위기만 참고, 따라 하지 말 것): {d['ref']}")
-    if str(d["avoid"]).strip():
-        lines.append(f"- 피하고 싶은 것: {d['avoid']}")
-    lines += ["", f"[4. 장면 구성] (장면 길이 합계 {total_sec(d)}초" + (f" / 목표 {L}초" if L else "") + ")"]
-    for i, s in enumerate(d["scenes"], 1):
-        lines.append(f"장면 {i} ({s['sec']}초)")
-        lines.append(f"  · 화면 글자: {s['text'].strip() or '(없음)'}")
-        if str(s["look"]).strip():
-            lines.append(f"  · 보이는 모습: {s['look']}")
-        if str(s["motion"]).strip():
-            lines.append(f"  · 움직임: {s['motion']}")
-    lines += ["", "[5. 소리]", f"- 배경음악: {d['music']}" + (f" ({d['music_mood']})" if d["music"] == YESNO_MUSIC[0] and str(d["music_mood"]).strip() else "")]
-    if str(d["sfx"]).strip():
-        lines.append(f"- 효과음: {d['sfx']}")
-    lines.append(f"- 내레이션: {d['narration']}")
-    lines += ["", "[6. 넣을 자료와 받는 형태]"]
-    lines.append("- 첨부: " + (", ".join(a["name"] for a in atts) + " (같이 첨부함)" if atts else "없음"))
-    if d["hold_end"]:
-        lines.append(f"- 마지막 장면에서 {d['hold_end']}초 멈추기")
-    if d["cover"]:
-        lines.append("- 마지막 장면 그림 파일(PNG)도 따로 주기")
-    if str(d["etc"]).strip():
-        lines += ["", "[기타 요청]", str(d["etc"]).strip()]
+    has_img = any(a["name"].rsplit(".", 1)[-1].lower() in ("png", "jpg", "jpeg", "gif", "webp", "svg") for a in atts)
+    topic = d["topic"].strip() or "(주제)"
+    lines = ["너는 최고의 모션그래픽 디자이너야.", f"{topic}{_eul(topic)} 알리는 {LENGTH} 모션그래픽 영상을 만들어줘."]
+    if has_img:
+        lines.append("첨부한 캐릭터가 주인공이야.")
+    lines += [f"- 영상 제목: {d['title'].strip()}" if d["title"].strip() else None,
+              f"- 핵심 메시지: {d['message'].strip()}",
+              f"- 영상 형식: {format_text(d)}",
+              "- 장면 구성:"]
+    for i, s in enumerate(d["scenes"]):
+        if not (s["look"].strip() or s["caption"].strip()):
+            continue
+        name, sec = SCENES[i]
+        part = [s["look"].strip()]
+        if s["caption"].strip():
+            part.append(f'자막 "{s["caption"].strip()}"')
+        if s["fx"].strip():
+            part.append(f"효과: {s['fx'].strip()}")
+        lines.append(f"  {name} ({sec}) " + " / ".join(p for p in part if p))
+    lines += [f"- 분위기와 색감: {d['color'].strip() or '자유롭게'}",
+              f"- 등장 캐릭터: {d['character'].strip() or '자유롭게'}",
+              f"- 마지막 문구: {d['last_line'].strip()}",
+              "- 화면 비율: 16:9",
+              "- 저작권 있는 음악·캐릭터·로고는 쓰지 말고 새로 만들어줘. 욱일기처럼 보이는 햇살 무늬는 쓰지 마."]
     revs = pending_revisions(g)
     if revs and results(g):
         lines += ["", "[수정 요청 — 앞서 만든 영상에서 고칠 것]"] + [f"- {m['text']}" for m in revs]
-    return "\n".join(lines)
+    return "\n".join(x for x in lines if x is not None)
 
 
 def revision_text(g: int, S: dict | None = None) -> str:
-    """이미 만든 영상을 고칠 때 Claude 대화창에 이어서 보낼 글."""
-    S = S or get_settings()
+    """이미 만든 영상을 고칠 때, 그 영상을 만든 대화창에 이어서 보낼 글(전체를 다시 만들지 않기)."""
     revs = pending_revisions(g)
     if not revs:
         return ""
-    return "\n".join([f"앞서 만든 {gname(g, S)} 영상을 아래처럼 고쳐 줘. 나머지는 그대로 두고, 고친 영상을 mp4로 다시 줘.", ""] +
-                     [f"- {m['text']}" for m in revs])
+    return "\n".join(["전체를 다시 만들지 말고, 아래 부분만 고쳐줘. 나머지는 그대로 두고 고친 영상을 다시 줘.", ""] +
+                      [f"- {m['text']}" for m in revs])
 
 
 # ───────────────────────── 백업 · 초기화
@@ -595,6 +614,7 @@ def backup() -> str:
             "requests": [dict(r) for r in c.execute("SELECT * FROM req ORDER BY g")],
             "messages": [dict(r) for r in c.execute("SELECT * FROM msg ORDER BY id")],
             "results": [{k: r[k] for k in ("g", "name", "size", "note", "at")} for r in c.execute("SELECT * FROM res ORDER BY id")],
+            "passwords": [{k: r[k] for k in ("g", "hash", "salt", "set_at")} for r in c.execute("SELECT * FROM pw ORDER BY g")],
         }
     finally:
         c.close()
@@ -618,7 +638,14 @@ def restore(raw: str | bytes) -> int:
                            r["status"] if r["status"] in STATUS else "draft", r.get("submitted_at"), r.get("updated_at") or time.time(), g))
         c.execute("DELETE FROM msg")
         for m in b.get("messages", []):
-            c.execute("INSERT INTO msg(g, who, text, at, seen) VALUES (?,?,?,?,?)", (m["g"], m["who"], m["text"], m["at"], m.get("seen", 1)))
+            c.execute("INSERT INTO msg(g, who, text, at, seen, kind) VALUES (?,?,?,?,?,?)",
+                      (m["g"], m["who"], m["text"], m["at"], m.get("seen", 1), m.get("kind") or "q"))
+        if "passwords" in b:      # 분임 비밀번호도 그대로(이미 들어와 있던 휴대폰도 계속 쓸 수 있게)
+            c.execute("DELETE FROM pw")
+            for p in b["passwords"]:
+                if 1 <= int(p["g"]) <= N_GROUPS and p.get("hash") and p.get("salt"):
+                    c.execute("INSERT INTO pw(g, hash, salt, set_at, fails, lock_until) VALUES (?,?,?,?,0,0)",
+                              (int(p["g"]), p["hash"], p["salt"], p.get("set_at")))
     return len(b.get("requests", []))
 
 
@@ -631,7 +658,7 @@ def results_zip() -> bytes:
             for r in reversed(results(g)):
                 stamp = time.strftime("%H%M", time.gmtime(r["at"] + 9 * 3600))
                 z.write(r["path"], f"{gname(g, S)}/{stamp}_{r['name']}")
-        z.writestr("의뢰서_백업.json", backup())
+        z.writestr("기획서_백업.json", backup())
     return buf.getvalue()
 
 
@@ -640,6 +667,7 @@ def reset_all():
         c.execute("DELETE FROM att")
         c.execute("DELETE FROM res")
         c.execute("DELETE FROM msg")
+        c.execute("DELETE FROM pw")
         c.execute("DELETE FROM kv WHERE k='screen'")
         for g in range(1, N_GROUPS + 1):
             c.execute("UPDATE req SET data=?, status='draft', submitted_at=NULL, updated_at=? WHERE g=?",
