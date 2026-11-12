@@ -3,7 +3,8 @@
   /                 분임 화면(휴대폰): 분임 고르기 → 비밀번호(처음엔 분임이 직접 만듦) → 기획서 쓰기·제출 → 결과물 보기·수정 요청
   /?g=3             분임 QR 카드로 바로 들어오는 주소(그 분임 비밀번호 화면)
   /?view=admin      관리팀(노트북, PIN): 진행 현황 · Claude 요청문 복사 · 결과물 올리기 · 비밀번호 초기화/QR · 백업
-  /?view=screen     스크린(프로젝터): 관리팀이 고른 결과물을 크게 틀기 · 시사회(분임 소개 화면 → 영상 → 다음 분임)
+  /?view=screen     스크린(프로젝터): 관리팀이 고른 결과물을 크게 틀기 · 시사회(분임 소개 화면 → 영상 → 다음 분임) · 투표 QR · 결과 발표
+  /?view=vote       투표(각자 휴대폰): 내 이름 → 우리 분임을 뺀 작품 중 한 편 (1인 1표, 명단은 관리팀이 미리 등록)
 """
 from __future__ import annotations
 
@@ -99,6 +100,23 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 .sc-intro .pitch b{display:block;font-family:"Yeon Sung",sans-serif;font-weight:400;color:#e8b04a;font-size:.8em;margin-bottom:.5vh}
 .sc-intro .soon{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.1rem,1.7vw,1.8rem);color:#ef6a55;animation:scblink 1.6s ease-in-out infinite}
 @keyframes scblink{50%{opacity:.3}}
+.sc-vote{display:flex;align-items:center;justify-content:center;gap:5vw;margin-top:2vh}
+.sc-vote img{width:44vh;height:44vh;background:#fff;border-radius:18px;padding:1.8vh;box-sizing:border-box}
+.sc-vote .side{display:flex;flex-direction:column;gap:2.4vh;text-align:left;max-width:44vw}
+.sc-vote .how{font-size:clamp(1.3rem,2.4vw,2.6rem);line-height:1.45;color:#fffaf0}
+.sc-vote .url{font-size:clamp(.9rem,1.3vw,1.4rem);color:#c9b892;word-break:break-all}
+.sc-count{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.6rem,3vw,3.2rem);color:#e8b04a}
+.sc-podium{display:flex;align-items:flex-end;justify-content:center;gap:2.4vw;margin-top:3vh;width:100%}
+.sc-podium .pd{flex:0 1 27vw;background:#fffaf0;color:#2b2218;border:3px solid #2b2218;border-radius:18px;box-shadow:6px 6px 0 #000;padding:3vh 1.6vw;text-align:center}
+.sc-podium .pd.p1{padding:7vh 1.6vw;background:#f6d77a}
+.sc-podium .pd.hide{background:#1d1711;color:#c9b892;border-color:#3a2f22;box-shadow:none}
+.sc-podium .aw{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.4rem,2.4vw,2.6rem);color:#cf4430}
+.sc-podium .hide .aw{color:#c9b892}
+.sc-podium .rk{font-size:clamp(1rem,1.4vw,1.5rem);color:#6a5a45}
+.sc-podium .gn{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.8rem,3.4vw,3.8rem);line-height:1.1;margin-top:1.2vh}
+.sc-podium .gt{font-size:clamp(1rem,1.5vw,1.6rem);margin-top:.5vh;word-break:keep-all}
+.sc-podium .gv{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.1rem,1.9vw,2.1rem);margin-top:.8vh;color:#1f3f8f}
+.sc-podium .q{font-family:"Yeon Sung",sans-serif;font-size:clamp(3rem,7vw,7.5rem);line-height:1}
 </style>"""
 
 
@@ -308,6 +326,9 @@ def group_view(g: int):
     group_header(g, R, S)
     if S["notice"].strip():
         md(f'<div class="mx mx-note" style="margin:-.2rem 0 .6rem">📢 {ESC(S["notice"])}</div>')
+    if store.vote_state() == "open":
+        md(f'<div class="mx mx-warn" style="border-style:solid;font-size:1.05rem">🗳 <b>투표가 열렸어요!</b> 각자 휴대폰으로 '
+           f'<a href="{ESC(base_url())}/?view=vote" target="_blank"><b>투표하러 가기</b></a> (스크린의 QR을 찍어도 돼요)</div>')
     res = store.results(g)
     names = ["🎬 결과물", "📝 기획서", "💬 수정 요청·문의"] if res else ["📝 기획서", "🎬 결과물", "💬 수정 요청·문의"]
     tabs = dict(zip(names, st.tabs(names)))
@@ -328,7 +349,7 @@ def watch_group(g: int):
     """관리팀이 상태를 바꾸거나 결과물·답장을 올리면 화면을 새로 그림."""
     def token():
         R = store.get_request(g)
-        return (R["status"], len(store.results(g)), len(store.messages(g)), store.session_token(g))
+        return (R["status"], len(store.results(g)), len(store.messages(g)), store.session_token(g), store.vote_state())
     st.session_state[f"tok_{g}"] = token()
 
     @st.fragment(run_every=8)
@@ -511,6 +532,72 @@ def chat_area(g: int):
             st.rerun()
 
 
+# ───────────────────────── 투표 화면(각자 휴대폰)
+def vote_view():
+    md(BASE_CSS)
+    S = store.get_settings()
+    stt = store.vote_state()
+    md(f'<div class="mx mx-card"><div class="mx-ev">{ESC(S["event"])}</div><div class="mx-h1">🗳 광고제 투표</div>'
+       '<div class="mx-note">1인 1표 · 내 이름으로 · 우리 분임 작품은 빼고 한 편</div></div>')
+
+    @st.fragment(run_every=4)
+    def watch():
+        if store.vote_state() != stt:          # 열리거나 마감되면 화면을 새로 그림
+            st.rerun()
+
+    done = st.session_state.get("vote_done")
+    if done:
+        md(f'<div class="mx mx-card" style="text-align:center"><div class="mx-h1">투표 완료! 🎉</div>'
+           f'<div class="mx-note"><b>{ESC(done)}</b> 님, 고마워요. 결과 발표를 기다려 주세요.</div></div>')
+        return
+    if stt != "open":
+        md('<div class="mx mx-warn">' + ("투표가 마감됐어요. 결과 발표를 기다려 주세요." if stt == "closed" else
+                                         "아직 투표 시간이 아니에요. 시사회가 끝나면 열려요.<br>이 화면을 켜 두면 열릴 때 자동으로 바뀌어요.") + "</div>")
+        watch()
+        return
+    who = st.session_state.get("vote_who")
+    if not who:
+        md('<div class="mx mx-sec"><i>1</i>내 이름</div>')
+        with st.form("vote_name"):
+            nm = st.text_input("내 이름", max_chars=20, placeholder="예: 김민수")
+            ok = st.form_submit_button("다음 →", type="primary", use_container_width=True)
+        md('<div class="mx mx-note">분임 명단에 등록된 이름 그대로 써 주세요(띄어쓰기는 상관없어요). 명단에 없다고 나오면 운영팀에 말해 주세요.</div>')
+        if ok:
+            found = store.find_voter(nm)
+            if not found:
+                st.error("명단에 없는 이름이에요. 이름을 다시 확인해 주세요.")
+            elif store.has_voted(found[0]):
+                st.error("이미 투표한 이름이에요. 내가 한 게 아니라면 운영팀에 말해 주세요.")
+            else:
+                st.session_state["vote_who"] = [found[0], found[1]]
+                st.rerun()
+        watch()
+        return
+    name, vg = who[0], int(who[1])
+    cands = store.vote_candidates(vg, S)
+    titles = {g: _title(g) for g in cands}
+    md(f'<div class="mx mx-sec"><i>2</i>작품 고르기</div><div class="mx-note"><b>{ESC(name)}</b> 님 ({ESC(_glabel(vg, S))}) · '
+       '마음에 드는 작품 한 편을 골라 주세요.' + (" 우리 분임 작품은 목록에 없어요." if vg else "") + "</div>")
+    if not cands:
+        md('<div class="mx mx-warn">고를 수 있는 작품이 아직 없어요. 운영팀에 말해 주세요.</div>')
+    else:
+        with st.form("vote_pick_form"):
+            pick = st.radio("작품", cands, index=None, key="vote_pick", label_visibility="collapsed",
+                            format_func=lambda g: f"{S['names'][g - 1]} · {titles[g]}" if titles[g] else S["names"][g - 1])
+            ok = st.form_submit_button("🗳 이 작품에 투표하기", type="primary", use_container_width=True)
+        if ok:
+            if pick is None:
+                st.error("작품을 하나 골라 주세요.")
+            elif act(store.cast_vote, name, int(pick)):
+                st.session_state["vote_done"] = name
+                st.session_state.pop("vote_who", None)
+                st.rerun()
+    if st.button("← 이름 다시 쓰기", key="vote_back"):
+        st.session_state.pop("vote_who", None)
+        st.rerun()
+    watch()
+
+
 # ───────────────────────── 관리팀 화면
 def admin_view():
     md(BASE_CSS + ADMIN_CSS)
@@ -529,7 +616,7 @@ def admin_view():
     if not secret("admin_pin"):
         st.error("Streamlit 설정(Secrets)에 admin_pin 이 없어서 관리 화면 PIN이 임시로 0000입니다. "
                  "배포 화면의 Settings → Secrets에 admin_pin = \"7391\" 처럼 관리팀만 아는 숫자를 넣어 주세요.")
-    tabs = st.tabs(["📋 진행 현황", "🎞 시사회", "🔑 분임 비밀번호·QR", "⚙️ 설정", "💾 백업·초기화"])
+    tabs = st.tabs(["📋 진행 현황", "🎞 시사회", "🗳 투표", "🔑 분임 비밀번호·QR", "⚙️ 설정", "💾 백업·초기화"])
     with tabs[0]:
         overview()
         md("<hr>")
@@ -537,10 +624,12 @@ def admin_view():
     with tabs[1]:
         premiere_panel()
     with tabs[2]:
-        pw_panel()
+        vote_panel()
     with tabs[3]:
-        settings_panel()
+        pw_panel()
     with tabs[4]:
+        settings_panel()
+    with tabs[5]:
         backup_panel()
 
 
@@ -552,12 +641,16 @@ def _step_label(step: dict, S: dict) -> str:
     if m == "play":
         return f"{S['names'][g - 1]} 영상 틀기"
     if m == "end":
-        return "상영 끝 화면 (투표 안내)"
+        return "투표 화면 (QR)"
+    if m == "result":
+        return "투표 결과 발표 화면"
     return "대기 판"
 
 
 def _go(step: dict):
     if act(store.screen_go, step):
+        if step.get("mode") == "end" and store.vote_state() == "ready":
+            store.set_vote_state("open")          # 투표 QR을 띄우면 투표도 같이 열림
         st.rerun()
 
 
@@ -570,7 +663,7 @@ def premiere_panel():
     url = base_url()
     md('<div class="mx mx-note">스크린 PC(프로젝터)에서 <b>' + ESC(url or "앱주소") + '/?view=screen</b>을 열고 화면을 <b>한 번 클릭</b>해 두세요(소리 허용). '
        '발표 자료를 넘기다가 시사회 차례가 되면 그 창으로 넘어가면 됩니다.<br>'
-       '아래 <b>[▶ 다음]</b>만 누르면 <b>분임 소개 화면 → 영상 → 다음 분임 소개</b> 순서로 넘어갑니다. '
+       '아래 <b>[▶ 다음]</b>만 누르면 <b>분임 소개 화면 → 영상 → 다음 분임 소개</b> 순서로 넘어가고, 마지막 영상 뒤에는 <b>투표 화면(QR)</b>이 뜨면서 투표가 열립니다. '
        '소개 화면에는 기획서의 영상 제목·형식·역할·발표 한마디가 자동으로 나오고, 영상은 그 분임이 <b>가장 최근에 올린 영상</b>이 나옵니다. '
        '결과물이 없는 분임은 건너뜁니다.</div>')
     now = _step_label(scr, S) if scr["mode"] != "play" else f"{S['names'][scr['g'] - 1]} 영상 상영 중" if scr["g"] else "대기 판"
@@ -583,7 +676,7 @@ def premiere_panel():
         c1, c2 = st.columns(2)
         if c1.button("⏹ 대기 판으로", key="pm_board", use_container_width=True, disabled=scr["mode"] == "board"):
             _go({"mode": "board"})
-        if c2.button("🏁 상영 끝 화면", key="pm_end", use_container_width=True, disabled=scr["mode"] == "end"):
+        if c2.button("🗳 투표 화면 (QR)", key="pm_end", use_container_width=True, disabled=scr["mode"] == "end"):
             _go({"mode": "end"})
     md('<div class="mx mx-sec">상영 순서</div>')
     for i, g in enumerate(store.screen_order(S), 1):
@@ -606,6 +699,116 @@ def premiere_panel():
         if st.form_submit_button("순서 저장"):
             store.save_settings(order=order.strip())
             st.rerun()
+
+
+# ───────────────────────── 투표 진행(관리팀)
+VSTATE = {"ready": ("준비 · 아직 안 열림", "#8a7a62", "#efe6cf"), "open": ("투표 중", "#1f7a3c", "#dcf2e1"),
+          "closed": ("마감", "#b3261e", "#fbdedb")}
+
+
+def _glabel(g: int, S: dict) -> str:
+    return "분임 없음" if g == 0 else S["names"][g - 1]
+
+
+def _title(g: int) -> str:
+    d = store.get_request(g)["data"]
+    return (d["title"] or d["topic"]).strip()
+
+
+@st.fragment(run_every=5)
+def vote_live():
+    S = store.get_settings()
+    t, fg, bg = VSTATE[store.vote_state()]
+    roster = store.get_roster()
+    vs = store.voters()
+    done: dict[int, int] = {}
+    for v in vs:
+        done[v["voter_g"]] = done.get(v["voter_g"], 0) + 1
+    tally = store.vote_tally()
+    rows = []
+    for g in list(range(1, store.N_GROUPS + 1)) + [0]:
+        if g == 0 and not roster[0]:
+            continue
+        rows.append(f'<tr><td><b>{ESC(_glabel(g, S))}</b></td><td>{done.get(g, 0)} / {len(roster[g])}명</td>'
+                    f'<td>{"" if g == 0 else str(tally[g]) + "표"}</td></tr>')
+    md(f'<div class="mx mx-top" style="margin:.3rem 0 .5rem"><span class="mx-badge" style="color:{fg};background:{bg}">{t}</span>'
+       f'<div class="mx-h1" style="font-size:1.6rem">참여 {len(vs)} / {sum(len(v) for v in roster.values())}명</div></div>')
+    md('<table class="mx mx-tbl"><tr><th>분임</th><th>투표한 사람</th><th>받은 표</th></tr>' + "".join(rows) + "</table>")
+    st.caption(f"5초마다 자동으로 새로 고칩니다 · {kst(time.time(), '%H:%M:%S')} 기준 · 누가 누구를 골랐는지는 저장만 하고 보여 주지 않습니다")
+
+
+def vote_panel():
+    S = store.get_settings()
+    stt = store.vote_state()
+    scr = store.screen_get()
+    roster = store.get_roster()
+    total = sum(len(v) for v in roster.values())
+    md('<div class="mx mx-note">각자 휴대폰으로 <b>' + ESC(base_url() or "앱주소") + '/?view=vote</b>에 들어와 <b>내 이름</b>을 쓰고, '
+       '<b>우리 분임을 뺀 작품 중 한 편</b>을 고릅니다(1인 1표). 이름은 아래 <b>명단</b>에 있어야 하고, 같은 이름으로 두 번은 못 합니다.<br>'
+       '스크린 투표 화면에 QR이 크게 나옵니다. 시사회 탭에서 마지막 영상 뒤 [▶ 다음]을 누르면 투표 화면이 뜨면서 투표가 자동으로 열립니다.</div>')
+    if not total:
+        st.warning("아직 명단이 없습니다. 아래 [분임 명단 등록]에서 먼저 등록해 주세요.")
+    vote_live()
+    with st.container(key="row_vt_ctl"):
+        c1, c2 = st.columns(2)
+        if c1.button("🗳 투표 열기 + 스크린에 QR" if stt != "closed" else "🗳 투표 다시 열기 + 스크린에 QR", key="vt_open",
+                     use_container_width=True, disabled=stt == "open" or not total):
+            store.set_vote_state("open")
+            _go({"mode": "end"})
+        if c2.button("⏹ 투표 마감", key="vt_close", use_container_width=True, disabled=stt != "open"):
+            store.set_vote_state("closed")
+            st.rerun()
+
+    md('<div class="mx mx-sec">결과 발표</div>')
+    steps = store.award_steps(S)
+    n = scr["n"] if scr["mode"] == "result" else -1
+    if n < 0:
+        lab = "🏆 결과 발표 화면 띄우기 (두구두구)"
+    elif n < len(steps):
+        lab = f"🏆 다음 공개: {steps[n]['award']} ({steps[n]['rank']}위)"
+    else:
+        lab = "🏆 모두 공개했습니다"
+    md('<div class="mx mx-note">투표를 <b>마감한 뒤</b> 누르세요. 누를 때마다 <b>3위 → 2위 → 1위</b> 순서로 하나씩 공개됩니다. '
+       '표가 같으면 공동 순위로 함께 나옵니다.</div>')
+    if st.button(lab, key="vt_reveal", type="primary", use_container_width=True, disabled=stt != "closed" or not steps or n >= len(steps)):
+        _go({"mode": "result", "n": n + 1})
+    if scr["mode"] == "result" and st.button("↺ 결과 화면 처음부터", key="vt_reveal0", use_container_width=True):
+        _go({"mode": "result", "n": 0})
+    with st.expander("결과 미리 보기 (관리팀만 · 스크린에는 안 나옴)"):
+        rk = store.ranking(S)
+        md('<div class="mx mx-note">' + "<br>".join(f'{x["rank"]}위 · <b>{ESC(S["names"][x["g"] - 1])}</b> {ESC(_title(x["g"]))} · {x["votes"]}표'
+                                                 for x in rk) + "</div>")
+    with st.form("vt_awards"):
+        aw = st.text_input("상 이름 (1위, 2위, 3위 순서로 쉼표)", S["awards"], max_chars=60)
+        if st.form_submit_button("상 이름 저장"):
+            store.save_settings(awards=aw.strip())
+            st.rerun()
+
+    md('<div class="mx mx-sec">분임 명단 등록 <span style="font-size:1rem;color:#6a5a45">투표 전에 · 한 줄에 한 명</span></div>')
+    md('<div class="mx mx-note">명단에 있는 이름으로만 투표할 수 있고, 그 사람의 분임 작품은 투표 목록에서 빠집니다. 띄어쓰기는 상관없어요.<br>'
+       '같은 이름(동명이인)이 있으면 저장되지 않으니 <b>김민수A, 김민수B</b>처럼 구분하고, 본인에게도 그렇게 쓰라고 알려 주세요.</div>')
+    with st.form("vt_roster"):
+        cols = st.columns(2)
+        texts = {}
+        for i, g in enumerate(range(1, store.N_GROUPS + 1)):
+            texts[g] = cols[i % 2].text_area(f"{g}. {S['names'][g - 1]} 명단", "\n".join(roster[g]), height=150)
+        texts[0] = st.text_area("분임 없이 투표하는 사람 (예: 국장님 · 모든 작품에 투표할 수 있음)", "\n".join(roster[0]), height=80)
+        if st.form_submit_button("명단 저장", type="primary"):
+            try:
+                st.success(f"명단 {store.save_roster({g: store.parse_names(t) for g, t in texts.items()})}명을 저장했습니다.")
+            except store.StoreError as e:
+                st.error(str(e))
+    with st.expander("아직 투표하지 않은 사람"):
+        voted = {store.name_key(v["name"]) for v in store.voters()}
+        lines = []
+        for g in list(range(1, store.N_GROUPS + 1)) + [0]:
+            if roster[g]:
+                left = [n for n in roster[g] if store.name_key(n) not in voted]
+                lines.append(f'<b>{ESC(_glabel(g, S))}</b> · {ESC(", ".join(left)) or "모두 투표함"}')
+        md('<div class="mx mx-note">' + ("<br>".join(lines) or "명단이 없습니다.") + "</div>")
+    if confirm_button("🧹 투표만 다시 하기 (리허설 뒤에)", "vt_reset", "모든 표를 지우고 투표를 '준비' 상태로 돌립니다. 명단은 남습니다."):
+        store.reset_votes()
+        st.success("투표를 초기화했습니다.")
 
 
 @st.fragment(run_every=10)
@@ -790,7 +993,7 @@ def backup_panel():
         st.download_button(f"⬇ 결과물 묶음 내려받기 ({size_txt(len(st.session_state['zip']))})", st.session_state["zip"],
                            file_name=f"분임_영상_{kst(time.time(), '%m%d')}.zip", mime="application/zip", use_container_width=True)
     md("<hr>")
-    if confirm_button("🧹 모두 지우고 처음부터 (리허설 뒤에)", "reset", "모든 기획서·자료·결과물·대화와 분임 비밀번호를 지웁니다. 설정(분임 이름 등)은 남습니다."):
+    if confirm_button("🧹 모두 지우고 처음부터 (리허설 뒤에)", "reset", "모든 기획서·자료·결과물·대화·투표와 분임 비밀번호를 지웁니다. 설정(분임 이름 등)과 투표 명단은 남습니다."):
         store.reset_all()
         st.success("초기화했습니다.")
 
@@ -813,6 +1016,50 @@ def intro_html(g: int, S: dict) -> str:
             + '<div class="soon">곧 상영합니다</div></div>')
 
 
+def vote_screen_html(S: dict) -> str:
+    """스크린 투표 화면: 투표 QR · 참여 수 (마감하면 '집계 중')."""
+    stt = store.vote_state()
+    total = sum(len(v) for v in store.get_roster().values())
+    count = f'<div class="sc-count">참여 {len(store.voters())}' + (f" / {total}명" if total else "명") + "</div>"
+    if stt == "closed":
+        return (f'<div class="sc-intro"><div class="ev">{ESC(S["event"])}</div><div class="ttl">투표 마감!</div>'
+                f'{count}<div class="soon">곧 결과를 발표합니다</div></div>')
+    url = f"{base_url()}/?view=vote"
+    try:
+        import segno
+        img = f'<img src="{segno.make(url, error="m").svg_data_uri(scale=10, border=1, dark="#000000", light="#ffffff")}" alt="투표 QR">'
+    except Exception:
+        img = ""
+    return (f'<div class="sc-intro"><div class="ev">{ESC(S["event"])} · 1인 1표</div>'
+            f'<div class="ttl" style="font-size:clamp(3rem,7vw,7.5rem)">{"투표 시간!" if stt == "open" else "곧 투표가 열려요"}</div>'
+            f'<div class="sc-vote">{img}<div class="side"><div class="how">휴대폰 카메라로 QR을 찍고<br><b>내 이름</b>을 쓴 다음<br>'
+            f'우리 분임을 뺀 <b>한 편</b>을 골라 주세요</div>{count}<div class="url">{ESC(url)}</div></div></div></div>')
+
+
+def result_html(S: dict, n: int) -> str:
+    """결과 발표: 시상대(2위·1위·3위) 칸을 두고, 3위부터 하나씩 공개."""
+    steps = store.award_steps(S)
+    if not steps:
+        return f'<div class="sc-intro"><div class="ev">{ESC(S["event"])}</div><div class="ttl">아직 표가 없어요</div></div>'
+    n = min(max(n, 0), len(steps))
+    shown = {s["rank"] for s in steps[:n]}
+    by_rank = sorted(steps, key=lambda s: s["rank"])
+    slots = [by_rank[1], by_rank[0], by_rank[2]] if len(by_rank) == 3 else [by_rank[1], by_rank[0]] if len(by_rank) == 2 else by_rank
+    cards = []
+    for s in slots:
+        p1 = " p1" if s is by_rank[0] else ""
+        if s["rank"] in shown:
+            body = "".join(f'<div class="gn">{ESC(S["names"][x["g"] - 1])}</div><div class="gt">{ESC(_title(x["g"]))}</div>'
+                           f'<div class="gv">{x["votes"]}표</div>' for x in s["groups"])
+            tie = " 공동" if len(s["groups"]) > 1 else ""
+            cards.append(f'<div class="pd{p1}"><div class="aw">{ESC(s["award"])}</div><div class="rk">{tie} {s["rank"]}위</div>{body}</div>')
+        else:
+            cards.append(f'<div class="pd hide{p1}"><div class="aw">{ESC(s["award"])}</div><div class="q">?</div></div>')
+    head = "축하합니다!" if n >= len(steps) else "두구두구…" if n == 0 else "투표 결과"
+    return (f'<div class="sc-intro"><div class="ev">{ESC(S["event"])} · 투표 결과 발표</div>'
+            f'<div class="ttl" style="font-size:clamp(3rem,7vw,7.5rem)">{head}</div><div class="sc-podium">{"".join(cards)}</div></div>')
+
+
 def screen_view():
     md(SCREEN_CSS)
     S = store.get_settings()
@@ -827,8 +1074,9 @@ def screen_view():
     if mode == "intro":
         md(intro_html(int(scr["g"]), S))
     elif mode == "end":
-        md('<div class="sc-intro"><div class="ev">' + ESC(S["event"]) + '</div><div class="ttl">상영 끝!</div>'
-           '<div class="cr">이제 마음에 드는 작품에 투표해 주세요</div><div class="soon">투표 시간입니다</div></div>')
+        md(vote_screen_html(S))
+    elif mode == "result":
+        md(result_html(S, scr["n"]))
     elif r:
         R = store.get_request(r["g"])
         md(f'<div class="sc-head"><b>{ESC(S["names"][r["g"] - 1])}</b><span>{ESC(R["data"]["title"] or R["data"]["topic"])}</span></div>')
@@ -859,6 +1107,8 @@ if view == "admin":
     admin_view()
 elif view == "screen":
     screen_view()
+elif view == "vote":
+    vote_view()
 else:
     g = st.session_state.get("g")
     if g and not store.check_token(int(g), st.session_state.get("tok")):

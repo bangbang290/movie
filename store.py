@@ -117,7 +117,8 @@ def init():
                     "CREATE TABLE IF NOT EXISTS att (id INTEGER PRIMARY KEY AUTOINCREMENT, g INTEGER, name TEXT, path TEXT, size INTEGER, at REAL)",
                     "CREATE TABLE IF NOT EXISTS res (id INTEGER PRIMARY KEY AUTOINCREMENT, g INTEGER, name TEXT, path TEXT, size INTEGER, note TEXT, at REAL)",
                     "CREATE TABLE IF NOT EXISTS msg (id INTEGER PRIMARY KEY AUTOINCREMENT, g INTEGER, who TEXT, text TEXT, at REAL, seen INTEGER DEFAULT 0)",
-                    "CREATE TABLE IF NOT EXISTS pw (g INTEGER PRIMARY KEY, hash TEXT, salt TEXT, set_at REAL, fails INTEGER DEFAULT 0, lock_until REAL DEFAULT 0)"):
+                    "CREATE TABLE IF NOT EXISTS pw (g INTEGER PRIMARY KEY, hash TEXT, salt TEXT, set_at REAL, fails INTEGER DEFAULT 0, lock_until REAL DEFAULT 0)",
+                    "CREATE TABLE IF NOT EXISTS vote (k TEXT PRIMARY KEY, name TEXT, voter_g INTEGER, g INTEGER, at REAL)"):
             c.execute(sql)
         if "kind" not in [r["name"] for r in c.execute("PRAGMA table_info(msg)")]:
             c.execute("ALTER TABLE msg ADD COLUMN kind TEXT DEFAULT 'q'")
@@ -143,6 +144,7 @@ def default_settings() -> dict:
         "notice": "★ 칸만 채우면 돼요. 20분 안에 쓰고 맨 아래 [제출하기]를 눌러 주세요.",
         "public_url": "",
         "order": "",          # 시사회 상영 순서(예: "3,1,2"). 비우면 1분임부터
+        "awards": "최우수상,우수상,장려상",   # 투표 1위·2위·3위 상 이름
     }
 
 
@@ -526,13 +528,14 @@ def pending_revisions(g: int) -> list[dict]:
 
 
 # ───────────────────────── 스크린(프로젝터)에 틀 것
-#   mode: board(대기 판) · intro(분임 소개 화면, g) · play(영상 상영, rid·g) · end(상영 끝·투표 안내)
-SCREEN_MODES = ("board", "intro", "play", "end")
+#   mode: board(대기 판) · intro(분임 소개 화면, g) · play(영상 상영, rid·g) · end(투표 화면: QR·참여 수)
+#         · result(투표 결과 발표, n = 지금까지 공개한 순위 수)
+SCREEN_MODES = ("board", "intro", "play", "end", "result")
 
 
 def _norm_screen(s: dict | None) -> dict:
     s = dict(s or {})
-    out = {"rid": s.get("rid"), "g": s.get("g"), "at": s.get("at") or 0, "mode": s.get("mode")}
+    out = {"rid": s.get("rid"), "g": s.get("g"), "at": s.get("at") or 0, "mode": s.get("mode"), "n": int(s.get("n") or 0)}
     if out["mode"] not in SCREEN_MODES:          # 예전 모양({"rid": …})도 그대로 읽기
         out["mode"] = "play" if out["rid"] else "board"
     return out
@@ -557,9 +560,10 @@ def screen_go(step: dict):
         if not r:
             raise StoreError("틀 결과물이 없습니다.")
         g = r["g"]
+    n = max(0, int(step.get("n") or 0)) if mode == "result" else 0
     with _tx() as c:
         _kv_put(c, "screen", {"mode": mode, "g": g if mode in ("intro", "play") else None,
-                              "rid": rid if mode == "play" else None, "at": time.time()})
+                              "rid": rid if mode == "play" else None, "n": n, "at": time.time()})
 
 
 def screen_set(rid: int | None):
@@ -595,11 +599,11 @@ def lineup(S: dict | None = None) -> list[dict]:
 
 
 def screen_next(S: dict | None = None) -> dict:
-    """[▶ 다음]이 할 일: 대기 판 → 첫 분임 소개 → 그 분임 영상 → 다음 분임 소개 → … → 상영 끝 → 대기 판."""
+    """[▶ 다음]이 할 일: 대기 판 → 첫 분임 소개 → 그 분임 영상 → 다음 분임 소개 → … → 투표 화면 → 대기 판."""
     L = lineup(S)
     cur = screen_get()
     gs = [x["g"] for x in L]
-    if not L or cur["mode"] == "end":
+    if not L or cur["mode"] in ("end", "result"):
         return {"mode": "board"}
     if cur["mode"] == "intro" and cur["g"] in gs:
         x = L[gs.index(cur["g"])]
@@ -622,9 +626,181 @@ def board_token() -> str:
         b = c.execute("SELECT COUNT(*) n, ifnull(MAX(id),0) m FROM res").fetchone()
         s = _kv_get(c, "screen", {}) or {}
         n = _kv_get(c, "settings", {}) or {}
+        v = c.execute("SELECT COUNT(*) n FROM vote").fetchone()["n"]
+        vs = (_kv_get(c, "vote", {}) or {}).get("state")
+        ro = _kv_get(c, "roster", {}) or {}
     finally:
         c.close()
-    return hashlib.md5(f"{a}|{b['n']}|{b['m']}|{s.get('rid')}|{s.get('at')}|{json.dumps(n, ensure_ascii=False)}".encode()).hexdigest()
+    return hashlib.md5(f"{a}|{b['n']}|{b['m']}|{s.get('rid')}|{s.get('at')}|{json.dumps(n, ensure_ascii=False)}|{v}|{vs}|"
+                       f"{json.dumps(ro, ensure_ascii=False)}".encode()).hexdigest()
+
+
+# ───────────────────────── 투표 (1인 1표 · 내 이름으로 · 우리 분임 작품은 빼고)
+#   명단: kv "roster" = {"0": [분임 없이 투표하는 사람], "1": [1분임 명단], …}
+#   상태: kv "vote" = {"state": ready(아직) | open(투표 중) | closed(마감)}   표: vote 테이블(이름당 1줄)
+VOTE_STATES = ("ready", "open", "closed")
+
+
+def name_key(name: str) -> str:
+    """이름 비교용: 띄어쓰기·대소문자 무시."""
+    return re.sub(r"\s+", "", str(name or "")).lower()
+
+
+def parse_names(text: str) -> list[str]:
+    """명단 칸 → 이름 목록(한 줄에 한 명, 쉼표로 나눠도 됨)."""
+    out: list[str] = []
+    for t in re.split(r"[\n,，、]+", str(text or "")):
+        t = re.sub(r"\s+", " ", t).strip()[:20]
+        if t and t not in out:
+            out.append(t)
+    return out
+
+
+def get_roster() -> dict[int, list[str]]:
+    c = _connect()
+    try:
+        raw = _kv_get(c, "roster", {}) or {}
+    finally:
+        c.close()
+    return {g: [str(n) for n in raw.get(str(g), [])] for g in range(0, N_GROUPS + 1)}
+
+
+def save_roster(roster: dict[int, list[str]]):
+    """명단 저장. 띄어쓰기를 빼고 같은 이름이 두 번 있으면(분임이 달라도) 저장하지 않음."""
+    S = get_settings()
+    label = lambda g: "분임 없음" if g == 0 else S["names"][g - 1]     # noqa: E731
+    seen: dict[str, tuple[str, int]] = {}
+    dup, clean = [], {}
+    for g in range(0, N_GROUPS + 1):
+        names = []
+        for n in roster.get(g, []):
+            n = re.sub(r"\s+", " ", str(n)).strip()[:20]
+            k = name_key(n)
+            if not k:
+                continue
+            if k in seen:
+                dup.append(f"{n}({label(seen[k][1])}·{label(g)})" if seen[k][1] != g else f"{n}({label(g)}에 두 번)")
+                continue
+            seen[k] = (n, g)
+            names.append(n)
+        clean[str(g)] = names
+    if dup:
+        raise StoreError("같은 이름이 있어요: " + ", ".join(dup) + " → '김민수A', '김민수B'처럼 구분해서 다시 저장해 주세요.")
+    with _tx() as c:
+        _kv_put(c, "roster", clean)
+    return sum(len(v) for v in clean.values())
+
+
+def find_voter(name: str) -> tuple[str, int] | None:
+    """명단에서 이름 찾기 → (명단에 적힌 이름, 분임 번호 · 분임 없음은 0)."""
+    k = name_key(name)
+    if not k:
+        return None
+    for g, names in get_roster().items():
+        for n in names:
+            if name_key(n) == k:
+                return n, g
+    return None
+
+
+def vote_state() -> str:
+    c = _connect()
+    try:
+        s = (_kv_get(c, "vote", {}) or {}).get("state")
+    finally:
+        c.close()
+    return s if s in VOTE_STATES else "ready"
+
+
+def set_vote_state(state: str):
+    if state not in VOTE_STATES:
+        raise StoreError("잘못된 투표 상태입니다.")
+    with _tx() as c:
+        _kv_put(c, "vote", {"state": state, "at": time.time()})
+
+
+def vote_candidates(voter_g: int, S: dict | None = None) -> list[int]:
+    """고를 수 있는 작품: 결과물이 올라온 분임(아무도 없으면 모든 분임)에서 내 분임을 뺀 것, 상영 순서대로."""
+    gs = [x["g"] for x in lineup(S)] or screen_order(S)
+    return [g for g in gs if g != voter_g]
+
+
+def has_voted(name: str) -> bool:
+    c = _connect()
+    try:
+        return c.execute("SELECT 1 FROM vote WHERE k=?", (name_key(name),)).fetchone() is not None
+    finally:
+        c.close()
+
+
+def cast_vote(name: str, g: int) -> str:
+    who = find_voter(name)
+    if not who:
+        raise StoreError("명단에 없는 이름이에요. 분임에 등록된 이름 그대로 써 주세요.")
+    disp, vg = who
+    if g == vg:
+        raise StoreError("우리 분임 작품에는 투표할 수 없어요.")
+    if g not in vote_candidates(vg):
+        raise StoreError("고를 수 없는 작품입니다.")
+    with _tx() as c:
+        state = (_kv_get(c, "vote", {}) or {}).get("state")
+        if state != "open":
+            raise StoreError("투표가 마감됐어요." if state == "closed" else "아직 투표 시간이 아니에요.")
+        if c.execute("SELECT 1 FROM vote WHERE k=?", (name_key(disp),)).fetchone():
+            raise StoreError("이미 투표한 이름이에요.")
+        c.execute("INSERT INTO vote(k, name, voter_g, g, at) VALUES (?,?,?,?,?)", (name_key(disp), disp, vg, int(g), time.time()))
+    return disp
+
+
+def voters() -> list[dict]:
+    """투표한 사람(누구를 찍었는지는 빼고)."""
+    c = _connect()
+    try:
+        return [dict(r) for r in c.execute("SELECT name, voter_g, at FROM vote ORDER BY at")]
+    finally:
+        c.close()
+
+
+def vote_tally() -> dict[int, int]:
+    out = {g: 0 for g in range(1, N_GROUPS + 1)}
+    c = _connect()
+    try:
+        for r in c.execute("SELECT g, COUNT(*) n FROM vote GROUP BY g"):
+            if r["g"] in out:
+                out[r["g"]] = r["n"]
+    finally:
+        c.close()
+    return out
+
+
+def ranking(S: dict | None = None) -> list[dict]:
+    """득표순 [{g, votes, rank}] — 표가 같으면 공동 순위(1, 1, 3 …)."""
+    order = screen_order(S)
+    items = sorted(vote_tally().items(), key=lambda kv: (-kv[1], order.index(kv[0])))
+    out, prev, rank = [], None, 0
+    for i, (g, v) in enumerate(items, 1):
+        if v != prev:
+            rank, prev = i, v
+        out.append({"g": g, "votes": v, "rank": rank})
+    return out
+
+
+def award_steps(S: dict | None = None) -> list[dict]:
+    """결과 발표 순서(3위 → 2위 → 1위). 표를 받은 분임만, 같은 순위는 함께. [{rank, award, groups:[{g, votes}]}]"""
+    S = S or get_settings()
+    names = [a.strip() for a in str(S.get("awards") or "").split(",")]
+    top = [x for x in ranking(S) if x["votes"] > 0 and x["rank"] <= 3]
+    return [{"rank": r, "award": (names[r - 1] if r - 1 < len(names) and names[r - 1] else f"{r}위"),
+             "groups": [x for x in top if x["rank"] == r]} for r in sorted({x["rank"] for x in top}, reverse=True)]
+
+
+def reset_votes():
+    """표만 지우고 투표를 '준비'로(명단은 그대로)."""
+    with _tx() as c:
+        c.execute("DELETE FROM vote")
+        _kv_put(c, "vote", {"state": "ready", "at": time.time()})
+        if (_kv_get(c, "screen", {}) or {}).get("mode") in ("end", "result"):
+            _kv_put(c, "screen", {"mode": "board", "rid": None, "g": None, "n": 0, "at": time.time()})
 
 
 # ───────────────────────── Claude에게 보낼 요청문
@@ -691,6 +867,9 @@ def backup() -> str:
             "messages": [dict(r) for r in c.execute("SELECT * FROM msg ORDER BY id")],
             "results": [{k: r[k] for k in ("g", "name", "size", "note", "at")} for r in c.execute("SELECT * FROM res ORDER BY id")],
             "passwords": [{k: r[k] for k in ("g", "hash", "salt", "set_at")} for r in c.execute("SELECT * FROM pw ORDER BY g")],
+            "roster": _kv_get(c, "roster", {}) or {},
+            "vote": _kv_get(c, "vote", {}) or {},
+            "votes": [dict(r) for r in c.execute("SELECT * FROM vote ORDER BY at")],
         }
     finally:
         c.close()
@@ -722,6 +901,15 @@ def restore(raw: str | bytes) -> int:
                 if 1 <= int(p["g"]) <= N_GROUPS and p.get("hash") and p.get("salt"):
                     c.execute("INSERT INTO pw(g, hash, salt, set_at, fails, lock_until) VALUES (?,?,?,?,0,0)",
                               (int(p["g"]), p["hash"], p["salt"], p.get("set_at")))
+        if b.get("roster"):          # 투표 명단·상태·표도 그대로
+            _kv_put(c, "roster", b["roster"])
+        if b.get("vote"):
+            _kv_put(c, "vote", b["vote"])
+        if "votes" in b:
+            c.execute("DELETE FROM vote")
+            for v in b["votes"]:
+                c.execute("INSERT OR IGNORE INTO vote(k, name, voter_g, g, at) VALUES (?,?,?,?,?)",
+                          (v["k"], v["name"], v["voter_g"], v["g"], v["at"]))
     return len(b.get("requests", []))
 
 
@@ -744,7 +932,8 @@ def reset_all():
         c.execute("DELETE FROM res")
         c.execute("DELETE FROM msg")
         c.execute("DELETE FROM pw")
-        c.execute("DELETE FROM kv WHERE k='screen'")
+        c.execute("DELETE FROM vote")          # 투표 명단(roster)은 설정처럼 남김
+        c.execute("DELETE FROM kv WHERE k IN ('screen', 'vote')")
         for g in range(1, N_GROUPS + 1):
             c.execute("UPDATE req SET data=?, status='draft', submitted_at=NULL, updated_at=? WHERE g=?",
                       (json.dumps(blank_request(), ensure_ascii=False), time.time(), g))
