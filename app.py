@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import html
+import os
 import time
 
 import streamlit as st
@@ -539,6 +540,8 @@ def vote_view():
     stt = store.vote_state()
     md(f'<div class="mx mx-card"><div class="mx-ev">{ESC(S["event"])}</div><div class="mx-h1">🗳 광고제 투표</div>'
        '<div class="mx-note">1인 1표 · 내 이름으로 · 우리 분임 작품은 빼고 한 편</div></div>')
+    if store.rehearsal_info().get("roster"):
+        md('<div class="mx mx-note">🧪 리허설 중이에요. <b>연습1-1</b>, <b>연습2-3</b>처럼 연습 명단 이름으로 투표해 보세요.</div>')
 
     @st.fragment(run_every=4)
     def watch():
@@ -616,7 +619,10 @@ def admin_view():
     if not secret("admin_pin"):
         st.error("Streamlit 설정(Secrets)에 admin_pin 이 없어서 관리 화면 PIN이 임시로 0000입니다. "
                  "배포 화면의 Settings → Secrets에 admin_pin = \"7391\" 처럼 관리팀만 아는 숫자를 넣어 주세요.")
-    tabs = st.tabs(["📋 진행 현황", "🎞 시사회", "🗳 투표", "🔑 분임 비밀번호·QR", "⚙️ 설정", "💾 백업·초기화"])
+    reh = store.rehearsal_info()
+    if reh:
+        st.warning(f"🧪 리허설 데이터가 들어 있어요({kst(reh.get('at'))} 채움). 행사 전에 꼭 [🧪 리허설] 탭에서 [리허설 끝: 모두 지우기]를 눌러 주세요.")
+    tabs = st.tabs(["📋 진행 현황", "🎞 시사회", "🗳 투표", "🔑 분임 비밀번호·QR", "⚙️ 설정", "💾 백업·초기화", "🧪 리허설"])
     with tabs[0]:
         overview()
         md("<hr>")
@@ -631,6 +637,48 @@ def admin_view():
         settings_panel()
     with tabs[5]:
         backup_panel()
+    with tabs[6]:
+        rehearsal_panel()
+
+
+# ───────────────────────── 리허설(연습용 데이터)
+def rehearsal_panel():
+    reh = store.rehearsal_info()
+    roster = store.get_roster()
+    total = sum(len(v) for v in roster.values())
+    url = base_url() or "앱주소"
+    md('<div class="mx mx-note">영상을 만들지 않고도 <b>시사회 → 투표 → 결과 발표</b>를 처음부터 끝까지 연습하는 곳입니다. '
+       '버튼 하나로 7개 분임에 연습용 기획서(제목·감독·발표자·발표 한마디)와 <b>샘플 영상</b>(7초, 소리 확인용 삐 소리)이 들어갑니다.</div>')
+    md(f'<div class="mx mx-card mx-note"><b>리허설 순서</b><br>'
+       f'① 아래 <b>[🧪 연습용 데이터 채우기]</b><br>'
+       f'② 스크린 PC에서 <b>{ESC(url)}/?view=screen</b> 열고 화면 한 번 클릭<br>'
+       f'③ <b>[🎞 시사회]</b> 탭에서 [▶ 다음] → 분임 소개 → 샘플 영상(소리 확인) → … → 마지막 뒤 투표 화면(QR)<br>'
+       f'④ 휴대폰으로 QR을 찍고 <b>연습1-1</b>, <b>연습2-3</b>처럼 연습 명단 이름으로 투표해 보기 (사람이 적으면 아래 <b>[🎲 연습용 표 채우기]</b>)<br>'
+       f'⑤ <b>[🗳 투표]</b> 탭에서 [⏹ 투표 마감] → [🏆 결과 발표] 3위부터 공개<br>'
+       f'⑥ 끝나면 <b>[🧹 리허설 끝: 모두 지우기]</b></div>')
+    if reh:
+        st.info(f"지금 리허설 데이터가 들어 있어요({kst(reh.get('at'))} 채움" + (", 연습 명단 사용 중" if reh.get("roster") else ", 등록한 명단 그대로") + ").")
+    default_roster = (not total) or bool(reh.get("roster"))
+    roster_too = st.checkbox("투표 명단도 연습 명단으로 채우기 (연습1-1 ~ 연습7-5, 연습국장)", value=default_roster, key="rh_roster")
+    if total and not reh.get("roster"):
+        md(f'<div class="mx mx-note">지금 등록된 명단 {total}명이 있어요. <b>체크를 끄면</b> 그 명단으로 투표 연습을 하고(리허설 뒤에도 명단은 남음), '
+           '<b>체크하면</b> 연습 명단으로 바뀌고 리허설을 끝낼 때 지워집니다(그때는 명단을 다시 등록해야 해요).</div>')
+    if confirm_button("🧪 연습용 데이터 채우기", "rh_fill", "지금 들어 있는 기획서·결과물·대화·투표·분임 비밀번호를 모두 지우고 7개 분임을 연습용으로 채웁니다. "
+                      "(행사 이름·분임 이름 같은 설정은 남습니다)"):
+        store.fill_rehearsal(bool(roster_too))
+        st.success("연습용 데이터를 채웠습니다. [🎞 시사회] 탭에서 [▶ 다음]을 눌러 보세요.")
+    if not os.path.exists(store.REHEARSAL_SAMPLE):
+        st.caption("샘플 영상 파일(rehearsal_sample.mp4)이 저장소에 없어서 영상 대신 그림이 들어갑니다. 소리까지 확인하려면 app.py 옆에 그 파일을 올려 주세요.")
+    md("<hr>")
+    if st.button("🎲 연습용 표 채우기 (아직 안 한 명단의 80%가 아무 작품에나 투표)", key="rh_votes", use_container_width=True, disabled=not total):
+        n = store.simulate_votes(0.8)
+        st.success(f"표 {n}개를 넣었습니다. [🗳 투표] 탭에서 마감 → 결과 발표를 연습해 보세요.")
+    md("<hr>")
+    if confirm_button("🧹 리허설 끝: 모두 지우기", "rh_end", "기획서·결과물·대화·투표·분임 비밀번호를 모두 지웁니다"
+                      + (" (연습 명단도 지웁니다)." if reh.get("roster") else ". 등록한 명단과 설정은 남습니다.")):
+        had_roster = bool(reh.get("roster"))
+        store.reset_all()
+        st.success("모두 지웠습니다. 이제 실제 행사를 시작할 수 있어요." + (" 연습 명단이 지워졌으니 [🗳 투표] 탭에서 실제 명단을 등록해 주세요." if had_roster else ""))
 
 
 # ───────────────────────── 시사회 진행
@@ -1071,6 +1119,9 @@ def screen_view():
     # 영상을 트는 중에는 '틀 영상'이 바뀔 때만 다시 그림(분임이 기획서를 고쳐도 영상이 처음부터 다시 시작하지 않게)
     tok = (lambda: f"play|{store.screen_get()}") if r else store.board_token
     st.session_state["scr_tok"] = tok()
+    if store.rehearsal_info():
+        md('<div style="position:fixed;top:1.2vh;right:1.6vw;z-index:999;font-family:\'Yeon Sung\',sans-serif;color:#0e0b08;background:#e8b04a;'
+           'border-radius:999px;padding:.1rem .9rem;font-size:clamp(.9rem,1.2vw,1.3rem)">🧪 리허설</div>')
     if mode == "intro":
         md(intro_html(int(scr["g"]), S))
     elif mode == "end":

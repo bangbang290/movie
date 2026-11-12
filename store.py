@@ -932,10 +932,132 @@ def reset_all():
         c.execute("DELETE FROM res")
         c.execute("DELETE FROM msg")
         c.execute("DELETE FROM pw")
-        c.execute("DELETE FROM vote")          # 투표 명단(roster)은 설정처럼 남김
-        c.execute("DELETE FROM kv WHERE k IN ('screen', 'vote')")
+        c.execute("DELETE FROM vote")          # 투표 명단(roster)은 설정처럼 남김(리허설용 연습 명단이면 같이 지움)
+        if (_kv_get(c, "rehearsal", {}) or {}).get("roster"):
+            c.execute("DELETE FROM kv WHERE k='roster'")
+        c.execute("DELETE FROM kv WHERE k IN ('screen', 'vote', 'rehearsal')")
         for g in range(1, N_GROUPS + 1):
             c.execute("UPDATE req SET data=?, status='draft', submitted_at=NULL, updated_at=? WHERE g=?",
                       (json.dumps(blank_request(), ensure_ascii=False), time.time(), g))
     shutil.rmtree(FILES, ignore_errors=True)
     os.makedirs(FILES, exist_ok=True)
+
+
+# ───────────────────────── 리허설(연습용 데이터) — 영상을 만들지 않고 시사회·투표·결과 발표를 끝까지 연습
+REHEARSAL_SAMPLE = os.path.join(BASE, "rehearsal_sample.mp4")    # 7초 샘플(카운트다운·삐 소리). 없으면 그림으로 대신
+REHEARSAL_NAMES = ["김하늘", "이바다", "박구름", "최햇살", "정별빛", "강노을", "윤새벽", "한가람", "오솔길", "서나래", "문다온", "배하람", "신이슬", "유보람",
+                   "장미르", "임가온", "조은솔", "홍해든", "권다솜", "황누리", "송아라", "안마루", "전하랑", "고은별", "남다인", "류하진", "변소담", "차도윤"]
+REHEARSAL_PLANS = [
+    ("우리 일을 광고하라", "심사2국, 오늘도 정확하게", "웅장한 광고", "보이지 않는 곳에서 숫자 하나까지 지킨다", "정확함이 우리의 자부심입니다",
+     "평범한 서류 검토를 블록버스터처럼 찍었어요. 관전 포인트는 도장 찍는 슬로모션!",
+     [("서류 더미 위로 조명이 떨어진다", "모두가 퇴근한 시간"), ("돋보기로 숫자 하나를 찾아낸다", "단 하나의 오류도 놓치지 않는다"),
+      ("도장이 쾅 찍히며 금빛이 퍼진다", "심사2국")]),
+    ("숫자로 보는 2026 심사2국", "숫자로 보는 2026", "인포그래픽", "올해도 우리는 이만큼 해냈다", "2026, 수고했어 우리",
+     "진짜 숫자와 체감 숫자를 섞었어요. 커피 잔 수는 진짜입니다.",
+     [("막대그래프가 쑥쑥 자란다", "처리 건수 ○○○건"), ("비행기 아이콘이 지도를 가로지른다", "출장 ○○회"), ("커피잔이 끝없이 쌓인다", "커피 ∞잔")]),
+    ("우리끼리 공익광고", "회의는 30분 안에", "귀여운 애니메이션", "짧은 회의가 모두를 살린다", "회의는 30분 안에, 약속해요",
+     "회의가 길어질수록 시계가 녹아내려요. 마지막 반전을 봐 주세요.",
+     [("시계 바늘이 빙글빙글 돈다", "회의 시작 1시간째…"), ("마타가 타이머를 들고 등장", "30분이면 충분하멍!"), ("모두 웃으며 자리에서 일어난다", "회의는 30분 안에")]),
+    ("2030 심사2국 예고편", "2030: AI와 함께", "영화 예고편", "2030년에도 판단은 사람이 한다", "2030 심사2국, 개봉 박두",
+     "AI 동료와 함께 일하는 4년 뒤를 상상했어요.",
+     [("어두운 화면에 2030 글자가 떠오른다", "2030년, 심사2국"), ("AI 동료가 서류를 순식간에 정리한다", "AI가 정리하고"), ("직원이 마지막 확인 버튼을 누른다", "사람이 판단한다")]),
+    ("우리끼리 공익광고", "속보: 퇴근 5분 전 업무 요청 멈춰!", "뉴스 속보", "퇴근 5분 전 업무 요청은 내일로", "퇴근 5분 전, 멈춰 주세요",
+     "뉴스 앵커가 된 마타가 속보를 전해요.",
+     [("속보 자막이 빨갛게 깜빡인다", "[속보] 퇴근 5분 전 업무 요청 포착"), ("시계가 17:55를 가리킨다", "17시 55분, 메신저 알림이…"),
+      ("마타가 '멈춰!' 표지판을 든다", "내일 해도 괜찮아요")]),
+    ("우리 일을 광고하라", "심사의 정석", "웅장한 광고", "꼼꼼함은 기본, 친절은 덤", "심사의 정석, 서울세관 심사2국",
+     "명품 광고처럼 우아하게 만들었어요. 배경음악에 주목!",
+     [("검은 배경에 금빛 펜이 천천히 돈다", "꼼꼼함"), ("서류가 한 장씩 날아와 정렬된다", "정확함"), ("팀원들이 나란히 서서 미소 짓는다", "그리고 우리")]),
+    ("숫자로 보는 2026 심사2국", "커피로 보는 우리 국", "인포그래픽", "우리 국을 움직이는 건 커피다", "오늘도 한 잔, 내일도 한 잔",
+     "한 해 동안 마신 커피를 다 쌓으면 어디까지 갈까요?",
+     [("커피잔 아이콘이 하나씩 늘어난다", "1월부터 지금까지"), ("커피잔 탑이 구름을 뚫는다", "쌓으면 구름보다 높다"), ("마타가 빈 잔을 들고 윙크", "오늘도 수고했어요")]),
+]
+
+
+def rehearsal_roster() -> dict[int, list[str]]:
+    """연습 명단: 분임마다 '연습3-1' ~ '연습3-5', 분임 없음은 '연습국장'."""
+    r = {g: [f"연습{g}-{i}" for i in range(1, 6)] for g in range(1, N_GROUPS + 1)}
+    r[0] = ["연습국장"]
+    return r
+
+
+def rehearsal_info() -> dict:
+    """리허설 데이터가 들어 있으면 {"at": …, "roster": 연습 명단을 넣었는지}, 아니면 {}."""
+    c = _connect()
+    try:
+        return _kv_get(c, "rehearsal", {}) or {}
+    finally:
+        c.close()
+
+
+def _sample_png(g: int) -> bytes:
+    """샘플 영상 파일이 없을 때 쓸 그림(분임 번호)."""
+    buf = io.BytesIO()
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        im = Image.new("RGB", (1280, 720), (14, 35, 80))
+        d = ImageDraw.Draw(im)
+        d.rectangle([0, 0, 1280, 12], fill=(226, 180, 60))
+        try:
+            d.text((640, 330), f"#{g}", font=ImageFont.load_default(size=220), fill=(226, 180, 60), anchor="mm")
+            d.text((640, 560), "REHEARSAL SAMPLE", font=ImageFont.load_default(size=56), fill=(185, 203, 230), anchor="mm")
+        except Exception:
+            pass
+        im.save(buf, "PNG")
+    except Exception:          # Pillow도 없으면 1×1 그림
+        buf.write(bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c49444154789c63f8cfc000000301"
+                                "0100c9fe92ef0000000049454e44ae426082"))
+    return buf.getvalue()
+
+
+def fill_rehearsal(roster_too: bool = True) -> int:
+    """모두 지우고 7개 분임을 연습용으로 채움: 기획서(제출·완성) + 샘플 영상 + (선택) 연습 명단. 설정은 그대로."""
+    reset_all()
+    has_mp4 = os.path.exists(REHEARSAL_SAMPLE)
+    clip = read_bytes(REHEARSAL_SAMPLE) if has_mp4 else None
+    now = time.time()
+    with _tx() as c:
+        for g in range(1, N_GROUPS + 1):
+            topic, title, fmt, message, last, pitch, scenes = REHEARSAL_PLANS[(g - 1) % len(REHEARSAL_PLANS)]
+            d = blank_request()
+            for j, (k, _lab) in enumerate(ROLES):
+                d[k] = REHEARSAL_NAMES[((g - 1) * len(ROLES) + j) % len(REHEARSAL_NAMES)]
+            d.update(topic=topic, title=title, format=fmt if fmt in FORMATS else FORMATS[0], message=message, last_line=last, pitch=pitch,
+                     color="하늘색·남색·금색", character="마타")
+            for i, (look, cap) in enumerate(scenes[:len(SCENES)]):
+                d["scenes"][i] = {"look": look, "caption": cap, "fx": ""}
+            c.execute("UPDATE req SET data=?, status='submitted', submitted_at=?, updated_at=? WHERE g=?",
+                      (json.dumps(d, ensure_ascii=False), now, now, g))
+    for g in range(1, N_GROUPS + 1):
+        if has_mp4:
+            add_result(g, f"{g}분임_리허설샘플.mp4", clip, "리허설용 샘플 영상", True)
+        else:
+            add_result(g, f"{g}분임_리허설샘플.png", _sample_png(g), "리허설용 샘플 그림", True)
+    with _tx() as c:
+        if roster_too:
+            _kv_put(c, "roster", {str(g): v for g, v in rehearsal_roster().items()})
+        _kv_put(c, "rehearsal", {"at": now, "roster": bool(roster_too)})
+        _kv_put(c, "vote", {"state": "ready", "at": now})
+    return N_GROUPS
+
+
+def simulate_votes(ratio: float = 0.8) -> int:
+    """연습용 가짜 표: 아직 투표 안 한 명단의 ratio만큼이 (우리 분임을 뺀) 아무 작품에나 투표. 투표 상태와 상관없이 넣음."""
+    import random
+    roster = get_roster()
+    voted = {name_key(v["name"]) for v in voters()}
+    pending = [(n, g) for g, ns in roster.items() for n in ns if name_key(n) not in voted]
+    random.shuffle(pending)
+    pending = pending[:max(1, round(len(pending) * ratio))] if pending else []
+    cands = {g: vote_candidates(g) for g in {vg for _n, vg in pending}}
+    weight = {g: random.uniform(1, 6) for g in range(1, N_GROUPS + 1)}      # 분임마다 인기를 달리해서 순위가 갈리게
+    n = 0
+    with _tx() as c:
+        for name, vg in pending:
+            if not cands[vg]:
+                continue
+            pick = random.choices(cands[vg], weights=[weight[g] for g in cands[vg]])[0]
+            cur = c.execute("INSERT OR IGNORE INTO vote(k, name, voter_g, g, at) VALUES (?,?,?,?,?)",
+                            (name_key(name), name, vg, pick, time.time()))
+            n += cur.rowcount
+    return n
