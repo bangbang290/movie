@@ -142,6 +142,7 @@ def default_settings() -> dict:
         "names": [f"{i}분임" for i in range(1, N_GROUPS + 1)],
         "notice": "★ 칸만 채우면 돼요. 20분 안에 쓰고 맨 아래 [제출하기]를 눌러 주세요.",
         "public_url": "",
+        "order": "",          # 시사회 상영 순서(예: "3,1,2"). 비우면 1분임부터
     }
 
 
@@ -525,17 +526,92 @@ def pending_revisions(g: int) -> list[dict]:
 
 
 # ───────────────────────── 스크린(프로젝터)에 틀 것
+#   mode: board(대기 판) · intro(분임 소개 화면, g) · play(영상 상영, rid·g) · end(상영 끝·투표 안내)
+SCREEN_MODES = ("board", "intro", "play", "end")
+
+
+def _norm_screen(s: dict | None) -> dict:
+    s = dict(s or {})
+    out = {"rid": s.get("rid"), "g": s.get("g"), "at": s.get("at") or 0, "mode": s.get("mode")}
+    if out["mode"] not in SCREEN_MODES:          # 예전 모양({"rid": …})도 그대로 읽기
+        out["mode"] = "play" if out["rid"] else "board"
+    return out
+
+
 def screen_get() -> dict:
     c = _connect()
     try:
-        return _kv_get(c, "screen", {}) or {"rid": None, "at": 0}
+        return _norm_screen(_kv_get(c, "screen", {}))
     finally:
         c.close()
 
 
-def screen_set(rid: int | None):
+def screen_go(step: dict):
+    """스크린을 step({"mode": …, "g": …, "rid": …}) 상태로 바꾸기."""
+    mode = step.get("mode") if step.get("mode") in SCREEN_MODES else "board"
+    g, rid = step.get("g"), step.get("rid")
+    if mode == "intro" and not (isinstance(g, int) and 1 <= g <= N_GROUPS):
+        raise StoreError("없는 분임입니다.")
+    if mode == "play":
+        r = get_result(rid) if rid else None
+        if not r:
+            raise StoreError("틀 결과물이 없습니다.")
+        g = r["g"]
     with _tx() as c:
-        _kv_put(c, "screen", {"rid": rid, "at": time.time()})
+        _kv_put(c, "screen", {"mode": mode, "g": g if mode in ("intro", "play") else None,
+                              "rid": rid if mode == "play" else None, "at": time.time()})
+
+
+def screen_set(rid: int | None):
+    """결과물 하나를 바로 틀기(None이면 대기 판)."""
+    screen_go({"mode": "play", "rid": rid} if rid else {"mode": "board"})
+
+
+def screen_order(S: dict | None = None) -> list[int]:
+    """상영 순서: [시사회] 탭의 '상영 순서'(예: 3,1,2)대로, 빠진 분임은 번호 순으로 뒤에."""
+    S = S or get_settings()
+    out: list[int] = []
+    for t in re.split(r"[^0-9]+", str(S.get("order", ""))):
+        if t and 1 <= int(t) <= N_GROUPS and int(t) not in out:
+            out.append(int(t))
+    return out + [g for g in range(1, N_GROUPS + 1) if g not in out]
+
+
+def premiere_clip(g: int) -> dict | None:
+    """시사회에 틀 결과물: 가장 최근에 올린 영상(영상이 없으면 가장 최근 그림)."""
+    rs = results(g)
+    vids = [r for r in rs if r["video"]]
+    return (vids or rs or [None])[0]
+
+
+def lineup(S: dict | None = None) -> list[dict]:
+    """시사회 순서대로 [{g, clip}] — 결과물이 올라온 분임만."""
+    out = []
+    for g in screen_order(S):
+        clip = premiere_clip(g)
+        if clip:
+            out.append({"g": g, "clip": clip})
+    return out
+
+
+def screen_next(S: dict | None = None) -> dict:
+    """[▶ 다음]이 할 일: 대기 판 → 첫 분임 소개 → 그 분임 영상 → 다음 분임 소개 → … → 상영 끝 → 대기 판."""
+    L = lineup(S)
+    cur = screen_get()
+    gs = [x["g"] for x in L]
+    if not L or cur["mode"] == "end":
+        return {"mode": "board"}
+    if cur["mode"] == "intro" and cur["g"] in gs:
+        x = L[gs.index(cur["g"])]
+        return {"mode": "play", "g": x["g"], "rid": x["clip"]["id"]}
+    if cur["mode"] in ("intro", "play") and cur["g"]:
+        order = screen_order(S)
+        after = order[order.index(cur["g"]) + 1:] if cur["g"] in order else []
+        for g in after:
+            if g in gs:
+                return {"mode": "intro", "g": g}
+        return {"mode": "end"}
+    return {"mode": "intro", "g": gs[0]}
 
 
 def board_token() -> str:

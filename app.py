@@ -3,7 +3,7 @@
   /                 분임 화면(휴대폰): 분임 고르기 → 비밀번호(처음엔 분임이 직접 만듦) → 기획서 쓰기·제출 → 결과물 보기·수정 요청
   /?g=3             분임 QR 카드로 바로 들어오는 주소(그 분임 비밀번호 화면)
   /?view=admin      관리팀(노트북, PIN): 진행 현황 · Claude 요청문 복사 · 결과물 올리기 · 비밀번호 초기화/QR · 백업
-  /?view=screen     스크린(프로젝터): 관리팀이 고른 결과물을 크게 틀기
+  /?view=screen     스크린(프로젝터): 관리팀이 고른 결과물을 크게 틀기 · 시사회(분임 소개 화면 → 영상 → 다음 분임)
 """
 from __future__ import annotations
 
@@ -88,6 +88,17 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 .sc-title{font-family:"Nanum Brush Script",serif;color:#f4e7c6;font-size:clamp(3rem,7vw,7rem);line-height:1;text-align:center;margin-top:4vh}
 .sc-sub{font-family:"Yeon Sung",sans-serif;color:#c9b892;text-align:center;font-size:clamp(1.2rem,2vw,2rem)}
 .mx-badge{display:inline-block;font-family:"Yeon Sung",sans-serif;font-size:clamp(.9rem,1.1vw,1.2rem);padding:.05rem .7rem;border-radius:999px;border:2px solid currentColor;white-space:nowrap;vertical-align:middle}
+.sc-intro{min-height:94vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2.2vh;color:#f4e7c6;font-family:"Gowun Dodum",sans-serif}
+.sc-intro .ev{font-family:"Yeon Sung",sans-serif;font-size:clamp(1rem,1.6vw,1.7rem);color:#c9b892;letter-spacing:.12em}
+.sc-intro .grp{font-family:"Yeon Sung",sans-serif;font-size:clamp(2rem,4.6vw,4.8rem);color:#e8b04a;line-height:1}
+.sc-intro .ttl{font-family:"Nanum Brush Script",serif;font-size:clamp(3.4rem,9vw,9.5rem);line-height:1.05;color:#fffaf0;max-width:92vw;word-break:keep-all}
+.sc-intro .fmt{font-family:"Yeon Sung",sans-serif;font-size:clamp(1rem,1.6vw,1.7rem);padding:.1rem 1.1rem;border:2px solid #c9b892;border-radius:999px;color:#c9b892}
+.sc-intro .cr{display:flex;flex-wrap:wrap;justify-content:center;gap:.6vh 2.6vw;font-size:clamp(1.1rem,2vw,2.2rem)}
+.sc-intro .cr i{font-style:normal;color:#c9b892;font-size:.72em;margin-right:.45em}
+.sc-intro .pitch{max-width:72vw;font-size:clamp(1.1rem,1.8vw,2rem);line-height:1.55;background:#1d1711;border-left:6px solid #cf4430;border-radius:12px;padding:1.8vh 2.2vw;text-align:left;word-break:keep-all}
+.sc-intro .pitch b{display:block;font-family:"Yeon Sung",sans-serif;font-weight:400;color:#e8b04a;font-size:.8em;margin-bottom:.5vh}
+.sc-intro .soon{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.1rem,1.7vw,1.8rem);color:#ef6a55;animation:scblink 1.6s ease-in-out infinite}
+@keyframes scblink{50%{opacity:.3}}
 </style>"""
 
 
@@ -518,17 +529,83 @@ def admin_view():
     if not secret("admin_pin"):
         st.error("Streamlit 설정(Secrets)에 admin_pin 이 없어서 관리 화면 PIN이 임시로 0000입니다. "
                  "배포 화면의 Settings → Secrets에 admin_pin = \"7391\" 처럼 관리팀만 아는 숫자를 넣어 주세요.")
-    tabs = st.tabs(["📋 진행 현황", "🔑 분임 비밀번호·QR", "⚙️ 설정", "💾 백업·초기화"])
+    tabs = st.tabs(["📋 진행 현황", "🎞 시사회", "🔑 분임 비밀번호·QR", "⚙️ 설정", "💾 백업·초기화"])
     with tabs[0]:
         overview()
         md("<hr>")
         detail()
     with tabs[1]:
-        pw_panel()
+        premiere_panel()
     with tabs[2]:
-        settings_panel()
+        pw_panel()
     with tabs[3]:
+        settings_panel()
+    with tabs[4]:
         backup_panel()
+
+
+# ───────────────────────── 시사회 진행
+def _step_label(step: dict, S: dict) -> str:
+    m, g = step["mode"], step.get("g")
+    if m == "intro":
+        return f"{S['names'][g - 1]} 소개 화면"
+    if m == "play":
+        return f"{S['names'][g - 1]} 영상 틀기"
+    if m == "end":
+        return "상영 끝 화면 (투표 안내)"
+    return "대기 판"
+
+
+def _go(step: dict):
+    if act(store.screen_go, step):
+        st.rerun()
+
+
+@st.fragment(run_every=5)
+def premiere_panel():
+    S = store.get_settings()
+    scr = store.screen_get()
+    L = store.lineup(S)
+    in_line = {x["g"]: x["clip"] for x in L}
+    url = base_url()
+    md('<div class="mx mx-note">스크린 PC(프로젝터)에서 <b>' + ESC(url or "앱주소") + '/?view=screen</b>을 열고 화면을 <b>한 번 클릭</b>해 두세요(소리 허용). '
+       '발표 자료를 넘기다가 시사회 차례가 되면 그 창으로 넘어가면 됩니다.<br>'
+       '아래 <b>[▶ 다음]</b>만 누르면 <b>분임 소개 화면 → 영상 → 다음 분임 소개</b> 순서로 넘어갑니다. '
+       '소개 화면에는 기획서의 영상 제목·형식·역할·발표 한마디가 자동으로 나오고, 영상은 그 분임이 <b>가장 최근에 올린 영상</b>이 나옵니다. '
+       '결과물이 없는 분임은 건너뜁니다.</div>')
+    now = _step_label(scr, S) if scr["mode"] != "play" else f"{S['names'][scr['g'] - 1]} 영상 상영 중" if scr["g"] else "대기 판"
+    md(f'<div class="mx mx-card" style="margin-top:.6rem"><div class="mx-note">지금 스크린</div><div class="mx-h1" style="font-size:1.7rem">📺 {ESC(now)}</div>'
+       f'<div class="mx-note">상영할 영상 {len(L)}편 / {store.N_GROUPS}개 분임</div></div>')
+    nxt = store.screen_next(S)
+    if st.button(f"▶ 다음: {_step_label(nxt, S)}", key="pm_next", type="primary", use_container_width=True, disabled=not L):
+        _go(nxt)
+    with st.container(key="row_pm_ctl"):
+        c1, c2 = st.columns(2)
+        if c1.button("⏹ 대기 판으로", key="pm_board", use_container_width=True, disabled=scr["mode"] == "board"):
+            _go({"mode": "board"})
+        if c2.button("🏁 상영 끝 화면", key="pm_end", use_container_width=True, disabled=scr["mode"] == "end"):
+            _go({"mode": "end"})
+    md('<div class="mx mx-sec">상영 순서</div>')
+    for i, g in enumerate(store.screen_order(S), 1):
+        d = store.get_request(g)["data"]
+        clip = in_line.get(g)
+        here = scr["g"] == g and scr["mode"] in ("intro", "play")
+        roles = " · ".join(f"{lab} {ESC(d[k])}" for k, lab in store.ROLES if d[k].strip())
+        info = (f'🎬 {ESC(clip["name"])} · {kst(clip["at"])}' if clip else '<span style="color:#9a8a72">아직 결과물 없음 → 건너뜀</span>')
+        with st.container(border=True, key=f"row_pm_{g}"):
+            c1, c2, c3 = st.columns([3.2, 1, 1], vertical_alignment="center")
+            c1.markdown(f'<div class="mx mx-note"><b style="font-size:1.1rem">{i}. {ESC(S["names"][g - 1])}</b> {ESC(d["title"] or d["topic"])}'
+                        + (' · <b style="color:#cf4430">스크린에 나오는 중</b>' if here else "")
+                        + f'<br>{info}' + (f'<br><span style="font-size:.85rem">{roles}</span>' if roles else "") + "</div>", unsafe_allow_html=True)
+            if c2.button("🎤 소개", key=f"pm_intro_{g}", use_container_width=True):
+                _go({"mode": "intro", "g": g})
+            if c3.button("▶ 영상", key=f"pm_play_{g}", use_container_width=True, disabled=not clip):
+                _go({"mode": "play", "rid": clip["id"]})
+    with st.form("pm_order"):
+        order = st.text_input("상영 순서 바꾸기 (분임 번호를 쉼표로, 예: 3,1,5 — 빠진 분임은 번호 순으로 뒤에. 비우면 1분임부터)", S["order"], max_chars=40)
+        if st.form_submit_button("순서 저장"):
+            store.save_settings(order=order.strip())
+            st.rerun()
 
 
 @st.fragment(run_every=10)
@@ -719,15 +796,40 @@ def backup_panel():
 
 
 # ───────────────────────── 스크린(프로젝터)
+def intro_html(g: int, S: dict) -> str:
+    """시사회 분임 소개 화면: 기획서에 쓴 제목·형식·역할·발표 한마디가 자동으로 들어감."""
+    d = store.get_request(g)["data"]
+    gs = [x["g"] for x in store.lineup(S)]
+    pos = f"시사회 {gs.index(g) + 1} / {len(gs)}" if g in gs else "시사회"
+    title = (d["title"] or d["topic"]).strip()
+    credits = "".join(f'<span><i>{lab}</i>{ESC(d[k])}</span>' for k, lab in store.ROLES if d[k].strip())
+    pitch = d["pitch"].strip()
+    return (f'<div class="sc-intro"><div class="ev">{ESC(S["event"])} · {pos}</div>'
+            f'<div class="grp">{ESC(S["names"][g - 1])}</div>'
+            + (f'<div class="ttl"{" style=font-size:clamp(2.6rem,5.6vw,6rem)" if len(title) > 14 else ""}>{ESC(title)}</div>' if title else "")
+            + f'<div class="fmt">{ESC(store.format_text(d))}</div>'
+            + (f'<div class="cr">{credits}</div>' if credits else "")
+            + (f'<div class="pitch"><b>기획 의도 · 관전 포인트</b>{ESC(pitch).replace(chr(10), "<br>")}</div>' if pitch else "")
+            + '<div class="soon">곧 상영합니다</div></div>')
+
+
 def screen_view():
     md(SCREEN_CSS)
     S = store.get_settings()
-    rid = store.screen_get().get("rid")
-    r = store.get_result(rid) if rid else None
+    scr = store.screen_get()
+    mode = scr["mode"]
+    r = store.get_result(scr["rid"]) if mode == "play" and scr["rid"] else None
+    if (mode == "play" and not r) or (mode == "intro" and not scr["g"]):
+        mode = "board"
     # 영상을 트는 중에는 '틀 영상'이 바뀔 때만 다시 그림(분임이 기획서를 고쳐도 영상이 처음부터 다시 시작하지 않게)
     tok = (lambda: f"play|{store.screen_get()}") if r else store.board_token
     st.session_state["scr_tok"] = tok()
-    if r:
+    if mode == "intro":
+        md(intro_html(int(scr["g"]), S))
+    elif mode == "end":
+        md('<div class="sc-intro"><div class="ev">' + ESC(S["event"]) + '</div><div class="ttl">상영 끝!</div>'
+           '<div class="cr">이제 마음에 드는 작품에 투표해 주세요</div><div class="soon">투표 시간입니다</div></div>')
+    elif r:
         R = store.get_request(r["g"])
         md(f'<div class="sc-head"><b>{ESC(S["names"][r["g"] - 1])}</b><span>{ESC(R["data"]["title"] or R["data"]["topic"])}</span></div>')
         if r["video"]:
