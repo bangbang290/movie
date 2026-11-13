@@ -178,11 +178,36 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 @keyframes glow{0%,100%{box-shadow:inset 0 0 0 6px #D6B676,inset 0 0 0 7px #6B1F2C,0 0 0 0 rgba(246,215,122,0)}50%{box-shadow:inset 0 0 0 6px #D6B676,inset 0 0 0 7px #6B1F2C,0 0 8vh 2vh rgba(246,215,122,.55)}}
 .sc-intro .ttl.shine{color:#F6E3A8;animation:shine 1.8s ease-in-out infinite}
 @keyframes shine{50%{text-shadow:0 0 3.5vh rgba(246,215,122,.9);transform:scale(1.04)}}
-.sc-confetti{position:fixed;inset:0;pointer-events:none;z-index:5;overflow:hidden}
-.sc-confetti i{position:absolute;top:-6vh;display:block;width:.8vw;height:1.7vh;border-radius:1px;opacity:.95;animation-name:cf;animation-timing-function:linear;animation-iteration-count:infinite}
-.sc-confetti i.r{width:1vw;height:1vw;border-radius:50%}
-@keyframes cf{0%{transform:translate3d(0,0,0) rotate(0)}100%{transform:translate3d(var(--dx),115vh,0) rotate(var(--rot))}}
-@media (prefers-reduced-motion: reduce){.sc-confetti{display:none}.sc-podium .pd.win,.sc-intro .ttl.shine{animation:none}}
+.sc-confetti{position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;pointer-events:none;z-index:999;overflow:hidden}
+.sc-confetti span{position:absolute;top:-4vh;display:block;width:1vw;height:2vh;border-radius:2px;opacity:.95;animation-timing-function:linear;animation-iteration-count:infinite}
+.sc-confetti span.r{width:1.1vw;height:1.1vw;border-radius:50%}
+.sc-confetti span.s{width:.5vw;height:2.6vh}
+.sc-confetti span.f0{animation-name:cf0}
+.sc-confetti span.f1{animation-name:cf1}
+.sc-confetti span.f2{animation-name:cf2}
+.sc-confetti span.f3{animation-name:cf3}
+.sc-confetti span.f4{animation-name:cf4}
+.sc-confetti span.f5{animation-name:cf5}
+.sc-confetti span.bl,.sc-confetti span.br{top:auto;bottom:-3vh;animation-timing-function:cubic-bezier(.15,.6,.4,1);animation-iteration-count:1;animation-fill-mode:both}
+.sc-confetti span.bl{left:-1vw}.sc-confetti span.br{right:-1vw}
+.sc-confetti span.bl.b0{animation-name:bl0}.sc-confetti span.br.b0{animation-name:br0}
+.sc-confetti span.bl.b1{animation-name:bl1}.sc-confetti span.br.b1{animation-name:br1}
+.sc-confetti span.bl.b2{animation-name:bl2}.sc-confetti span.br.b2{animation-name:br2}
+.sc-confetti span.bl.b3{animation-name:bl3}.sc-confetti span.br.b3{animation-name:br3}
+@keyframes cf0{0%{transform:translate(0,0) rotate(0deg)}100%{transform:translate(-9vw,118vh) rotate(720deg)}}
+@keyframes cf1{0%{transform:translate(0,0) rotate(0deg)}100%{transform:translate(7vw,118vh) rotate(-900deg)}}
+@keyframes cf2{0%{transform:translate(0,0) rotate(0deg)}100%{transform:translate(-4vw,118vh) rotate(1080deg)}}
+@keyframes cf3{0%{transform:translate(0,0) rotate(0deg)}100%{transform:translate(11vw,118vh) rotate(540deg)}}
+@keyframes cf4{0%{transform:translate(0,0) rotate(0deg)}100%{transform:translate(3vw,118vh) rotate(-640deg)}}
+@keyframes cf5{0%{transform:translate(0,0) rotate(0deg)}100%{transform:translate(-12vw,118vh) rotate(960deg)}}
+@keyframes bl0{0%{transform:translate(0,0) rotate(0deg);opacity:1}55%{transform:translate(14vw,-78vh) rotate(500deg);opacity:1}100%{transform:translate(19vw,-8vh) rotate(900deg);opacity:0}}
+@keyframes br0{0%{transform:translate(0,0) rotate(0deg);opacity:1}55%{transform:translate(-14vw,-78vh) rotate(-500deg);opacity:1}100%{transform:translate(-19vw,-8vh) rotate(-900deg);opacity:0}}
+@keyframes bl1{0%{transform:translate(0,0) rotate(0deg);opacity:1}55%{transform:translate(24vw,-66vh) rotate(500deg);opacity:1}100%{transform:translate(32vw,4vh) rotate(900deg);opacity:0}}
+@keyframes br1{0%{transform:translate(0,0) rotate(0deg);opacity:1}55%{transform:translate(-24vw,-66vh) rotate(-500deg);opacity:1}100%{transform:translate(-32vw,4vh) rotate(-900deg);opacity:0}}
+@keyframes bl2{0%{transform:translate(0,0) rotate(0deg);opacity:1}55%{transform:translate(34vw,-56vh) rotate(500deg);opacity:1}100%{transform:translate(46vw,14vh) rotate(900deg);opacity:0}}
+@keyframes br2{0%{transform:translate(0,0) rotate(0deg);opacity:1}55%{transform:translate(-34vw,-56vh) rotate(-500deg);opacity:1}100%{transform:translate(-46vw,14vh) rotate(-900deg);opacity:0}}
+@keyframes bl3{0%{transform:translate(0,0) rotate(0deg);opacity:1}55%{transform:translate(9vw,-88vh) rotate(500deg);opacity:1}100%{transform:translate(12vw,-18vh) rotate(900deg);opacity:0}}
+@keyframes br3{0%{transform:translate(0,0) rotate(0deg);opacity:1}55%{transform:translate(-9vw,-88vh) rotate(-500deg);opacity:1}100%{transform:translate(-12vw,-18vh) rotate(-900deg);opacity:0}}
 [data-testid="stAudio"],.st-key-aud_roll,.st-key-aud_win{position:fixed!important;left:-9999px!important;width:1px!important}
 </style>"""
 
@@ -1354,15 +1379,20 @@ CELEBRATE = os.path.join(store.BASE, "celebrate.mp3")    # 최우수 공개 때 
 _CONF_COLORS = ["#F5C542", "#D8394A", "#2FA35F", "#F4EAD5", "#D6B676", "#6EC6FF", "#FF9BD2"]
 
 
-def confetti_html(n: int = 90) -> str:
-    """꽃가루(종이 조각·동그라미)가 위에서 쉬지 않고 떨어지는 층."""
+def confetti_html(n: int = 130, burst: int = 36) -> str:
+    """꽃가루: 양쪽 아래에서 '펑' 터지는 폭죽 + 위에서 쉬지 않고 떨어지는 종이 조각.
+    (Streamlit 마크다운은 인라인 CSS 변수(--x)를 망가뜨리므로 움직임은 모두 클래스·keyframes로만 정함)"""
     r = random.Random(2026)
     bits = []
     for k in range(n):
-        shape = ' class="r"' if k % 4 == 0 else ""
-        bits.append(f'<i{shape} style="left:{r.uniform(0, 100):.1f}%;background:{_CONF_COLORS[k % len(_CONF_COLORS)]};'
-                    f'animation-duration:{r.uniform(3.2, 6.5):.2f}s;animation-delay:-{r.uniform(0, 6):.2f}s;'
-                    f'--dx:{r.uniform(-8, 8):.1f}vw;--rot:{r.choice([-1, 1]) * r.randint(360, 1080)}deg"></i>')
+        shape = " r" if k % 4 == 0 else (" s" if k % 4 == 1 else "")
+        bits.append(f'<span class="f{k % 6}{shape}" style="left:{r.uniform(0, 100):.1f}%;background:{_CONF_COLORS[k % len(_CONF_COLORS)]};'
+                    f'animation-duration:{r.uniform(3.4, 6.8):.2f}s;animation-delay:-{r.uniform(0, 6.8):.2f}s"></span>')
+    for k in range(burst):
+        side = "bl" if k % 2 == 0 else "br"
+        shape = " r" if k % 3 == 0 else ""
+        bits.append(f'<span class="{side} b{(k // 2) % 4}{shape}" style="background:{_CONF_COLORS[(k * 3) % len(_CONF_COLORS)]};'
+                    f'animation-duration:{r.uniform(1.8, 2.8):.2f}s;animation-delay:{r.uniform(0, 0.35):.2f}s;margin-bottom:{r.uniform(0, 12):.1f}vh"></span>')
     return '<div class="sc-confetti" aria-hidden="true">' + "".join(bits) + "</div>"
 
 
