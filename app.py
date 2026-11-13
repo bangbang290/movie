@@ -1,7 +1,8 @@
 """워크숍 모션 영상 의뢰 (Streamlit) — 주소 하나로 세 화면.
 
   /                 분임 화면(휴대폰): 분임 고르기 → 비밀번호(처음엔 분임이 직접 만듦) → 기획서 쓰기·제출 → 결과물 보기·수정 요청
-  /?g=3             분임 QR 카드로 바로 들어오는 주소(그 분임 비밀번호 화면)
+  /                 행사 공통 QR → 분임 고르기 → 비밀번호
+  /?g=3             (선택) 분임별 QR 카드로 바로 들어오는 주소(그 분임 비밀번호 화면)
   /?view=admin      관리팀(노트북, PIN): 진행 현황 · Claude 요청문 복사 · 결과물 올리기 · 비밀번호 초기화/QR · 백업
   /?view=screen     스크린(프로젝터): 관리팀이 고른 결과물을 크게 틀기 · 시사회(분임 소개 화면 → 영상 → 다음 분임) · 투표 QR · 결과 발표
   /?view=vote       투표(각자 휴대폰): 내 이름 → 우리 분임을 뺀 작품 중 한 편 (1인 1표, 명단은 관리팀이 미리 등록)
@@ -35,7 +36,7 @@ BASE_CSS = """<style>
 """ + FONTS + TWINKLE + """
 header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],[data-testid="stStatusWidget"],#MainMenu,footer{display:none!important}
 [data-stale="true"],.stale-element{opacity:1!important;transition:none!important}
-.stApp{background:#6B1F2C}
+.stApp{background:#3A2126}
 .stApp::before{content:"";position:fixed;inset:10px;border:1px solid #D6B676;pointer-events:none;z-index:1}
 .stApp::after{content:"";position:fixed;inset:15px;border:1px solid #8E6F45;pointer-events:none;z-index:1}
 .block-container{max-width:760px!important;padding-top:1.8rem!important;padding-bottom:4rem!important}
@@ -87,8 +88,8 @@ div[class*="st-key-pick_"] button{min-height:64px!important;flex-direction:colum
  mask:radial-gradient(circle 7px at 0 50%,#0000 97%,#000) left/51% 100% no-repeat,radial-gradient(circle 7px at 100% 50%,#0000 97%,#000) right/51% 100% no-repeat}
 div[class*="st-key-pick_"] button::before{font-family:"Cormorant Garamond",serif;font-size:.74rem;font-weight:600;letter-spacing:.22em;color:#7A5A3C}
 div[class*="st-key-pick_"] button p{font-size:1.2rem!important}
-div[class*="st-key-scene_"]{background:#5A1A26;border-radius:6px}
-[data-testid="stExpander"] details{background:#5A1A26;border:1px solid #8E6F45;border-radius:6px}
+div[class*="st-key-scene_"]{background:#46292F;border-radius:6px}
+[data-testid="stExpander"] details{background:#46292F;border:1px solid #8E6F45;border-radius:6px}
 </style>"""
 
 ADMIN_CSS = """<style>
@@ -126,6 +127,18 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 .mx-badge{display:inline-block;font-family:"Noto Serif KR",serif;font-weight:500;font-size:clamp(.85rem,1.05vw,1.15rem);padding:.05rem .7rem;border-radius:999px;border:1.5px solid currentColor;white-space:nowrap;vertical-align:middle}
 .sc-intro{position:relative;z-index:3;min-height:88vh;max-width:52vw;margin:0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#F4EAD5;font-family:"Noto Serif KR",serif}
 .sc-intro.wide{max-width:92vw}
+.sc-intro.entry{max-width:45vw;min-height:90vh}
+.sc-intro.entry .sc-title{margin-top:2.4vh;font-size:clamp(2rem,3.6vw,3.8rem)}
+.sc-intro.entry .sc-sub{margin-top:.6vh}
+.sc-entry{margin-top:3vh;width:31vh;height:31vh;box-sizing:border-box;padding:1.3vh;background:#fff;border-radius:3px;box-shadow:0 0 0 1px #D6B676,0 0 0 1.2vh #6B1F2C,0 0 0 calc(1.2vh + 1px) #8E6F45}
+.sc-entry img{width:100%;height:100%;display:block}
+.sc-how{margin-top:3vh;font-size:clamp(1.1rem,1.7vw,1.9rem);color:#F4EAD5}
+.sc-how b{color:#D6B676;font-weight:600}
+.sc-intro.entry .sc-board{width:100%;grid-template-columns:repeat(4,minmax(0,1fr));gap:.8vw;margin-top:3.4vh}
+.sc-intro.entry .sc-card{padding:1.1vh 1vw;text-align:left;box-shadow:inset 0 0 0 4px #F4EAD5,inset 0 0 0 5px #D6B676}
+.sc-intro.entry .sc-card .n{font-size:clamp(.95rem,1.35vw,1.5rem)}
+.sc-intro.entry .sc-card .mx-badge{font-size:clamp(.7rem,.8vw,.9rem);padding:0 .45rem}
+.sc-intro.entry .sc-card .t{font-size:clamp(.75rem,.95vw,1.05rem);min-height:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sc-intro .ev{width:100%;display:flex;align-items:center;gap:1.2vw;font-family:"Cormorant Garamond","Noto Serif KR",serif;font-weight:600;font-size:clamp(.9rem,1.25vw,1.4rem);letter-spacing:.3em;color:#D6B676;white-space:nowrap}
 .sc-intro .ev::before,.sc-intro .ev::after{content:"";flex:1;height:1px;background:#D6B676}
 .sc-intro .grp{margin-top:3.6vh;font-size:clamp(1.3rem,2vw,2.2rem);font-weight:500;letter-spacing:.12em;color:#D6B676}
@@ -385,7 +398,7 @@ def show_result(r: dict, key: str, big: bool = True):
 
 # ───────────────────────── 첫 화면: 분임 고르기
 def home_view():
-    md(BASE_CSS)
+    md(BASE_CSS + '<style>.stApp{background:#6B1F2C}</style>')   # 첫 화면만 축제 분위기(진한 와인색)
     S = store.get_settings()
     pick = st.session_state.get("pick")
     if not pick:
@@ -394,7 +407,7 @@ def home_view():
            '<div class="mx-h1" style="margin-top:.9rem;font-size:2.1rem">모션 영상 의뢰</div>'
            f'<div class="mx-subt">{ESC(S["event"])}</div>'
            '<div class="mx-note" style="max-width:310px;margin-top:.5rem">분임별로 영상 기획서를 쓰고, 완성된 영상을 여기서 바로 봅니다.<br>'
-           '분임 QR 카드를 찍으면 우리 분임 화면이 바로 열려요.</div></div>')
+           '우리 분임을 고르고 비밀번호를 넣으면 시작돼요.</div></div>')
         md('<div class="mx mx-orn sub">우리 분임을 골라 주세요</div>')
         # 영화표 버튼: 분임마다 'ADMIT ONE · No. 01' 한 줄을 위에 붙임
         md("<style>" + "".join(f'.st-key-pick_{g} button::before{{content:"ADMIT ONE · No. {g:02d}"}}'
@@ -1116,6 +1129,46 @@ def detail():
                     st.rerun()
 
 
+def entry_qr(url: str, scale: int = 10) -> str:
+    """행사 공통 QR(앱 첫 화면 = 분임 고르기) 그림 주소."""
+    try:
+        import segno
+        return segno.make(url + "/", error="m").svg_data_uri(scale=scale, border=1, dark="#000000", light="#ffffff")
+    except Exception:
+        return ""
+
+
+def poster_html(url: str, S: dict) -> str:
+    """행사 메인 포스터(A4 세로): 윈터 매직 디자인 + 공통 QR 하나."""
+    return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>{ESC(S["event"])} 행사 포스터</title><style>
+{FONTS}{TWINKLE}
+@page{{size:A4;margin:0}}*{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+body{{margin:0;background:#2a1418;font-family:"Noto Sans KR","Malgun Gothic",sans-serif}}
+.tip{{max-width:210mm;margin:10px auto;padding:10px 14px;background:#fff8e6;border-radius:6px;font-size:14px}}@media print{{.tip{{display:none}}body{{background:#6B1F2C}}}}
+.page{{position:relative;width:210mm;height:297mm;margin:0 auto;background:#6B1F2C;overflow:hidden;color:#F4EAD5}}
+.f1{{position:absolute;inset:6mm;border:.35mm solid #D6B676}}.f2{{position:absolute;inset:8.5mm;border:.3mm solid #8E6F45}}
+.gar{{position:absolute;left:12mm;right:12mm;top:11mm}}.gar svg{{width:100%;height:auto;overflow:visible;display:block}}
+.tree{{position:absolute;right:12mm;bottom:12mm;height:74mm;width:55.5mm}}.sl{{position:absolute;left:24mm;bottom:25mm;width:66mm;height:46mm}}
+.tree svg,.sl svg{{width:100%;height:100%;overflow:visible;display:block}}
+.c{{position:absolute;left:0;right:0;top:32mm;display:flex;flex-direction:column;align-items:center;text-align:center}}
+.orn{{display:flex;align-items:center;gap:4mm;width:120mm;font-family:"Cormorant Garamond",serif;font-weight:600;font-size:11pt;letter-spacing:.32em;color:#D6B676}}
+.orn:before,.orn:after{{content:"";flex:1;height:.3mm;background:#D6B676}}
+h1{{margin:7mm 0 0;font-family:"Noto Serif KR",serif;font-weight:600;font-size:32pt;line-height:1.2}}
+.sub{{margin-top:2mm;font-family:"Noto Serif KR",serif;font-weight:500;font-size:13pt;letter-spacing:.16em;color:#D6B676}}
+.qr{{margin-top:9mm;width:84mm;height:84mm;box-sizing:border-box;padding:5mm;background:#fff;border-radius:1mm;box-shadow:0 0 0 .35mm #D6B676,0 0 0 2.6mm #6B1F2C,0 0 0 2.9mm #8E6F45}}
+.qr img{{width:100%;height:100%;display:block}}
+.steps{{margin-top:9mm;font-family:"Noto Serif KR",serif;font-size:13pt;line-height:1.85;word-break:keep-all}}.steps b{{color:#D6B676;font-weight:600}}
+.url{{margin-top:3mm;font-size:9pt;color:#CDB8A6}}
+.merry{{position:absolute;left:0;right:0;bottom:13mm;text-align:center;font-family:"Cormorant Garamond",serif;font-style:italic;font-size:14pt;color:#D6B676}}
+</style></head><body><div class="tip">이 파일을 연 상태에서 <b>Ctrl + P</b> → 용지 <b>A4</b>, 여백 <b>없음</b>, <b>배경 그래픽 켜기</b>로 인쇄하세요. (이 안내는 인쇄되지 않습니다)</div>
+<div class="page"><div class="f1"></div><div class="f2"></div><div class="gar">{garland_svg().replace('<div class="sc-garland">', "").replace("</svg></div>", "</svg>")}</div>
+<div class="sl">{_SLEIGH}</div><div class="tree">{tree_svg("pt")}</div>
+<div class="c"><div class="orn">WINTER PREMIERE</div><h1>{ESC(S["event"])}</h1><div class="sub">AI 모션그래픽 광고제</div>
+<div class="qr"><img src="{entry_qr(url, 12)}" alt="행사 QR"></div>
+<div class="steps"><b>①</b> 휴대폰 카메라로 QR을 찍어요<br><b>②</b> 우리 분임을 골라요<br><b>③</b> 처음 들어온 분이 비밀번호(숫자 4자리)를 만들어요</div>
+<div class="url">{ESC(url)}</div></div><div class="merry">Merry Christmas &amp; Happy New Year</div></div></body></html>'''
+
+
 def qr_cards_html(url: str, S: dict) -> str:
     """인쇄용 분임 QR 카드(A4 한 장에 2장)."""
     import segno
@@ -1162,8 +1215,19 @@ def pw_panel():
     if not url or "localhost" in url:
         st.warning("접속 주소를 알 수 없습니다. [설정] 탭에 앱 주소(…streamlit.app)를 넣어 주세요.")
         return
-    st.download_button("🖨 인쇄용 분임 QR 카드 내려받기 (A4 한 장에 2분임)", qr_cards_html(url, S), file_name="분임_QR카드.html",
-                       mime="text/html", use_container_width=True)
+    md('<div class="mx mx-sec">🎄 행사 공통 QR</div>'
+       '<div class="mx mx-note">QR <b>하나</b>로 모두 들어옵니다. 찍으면 <b>분임 고르기</b> 화면이 열리고, 우리 분임을 고른 뒤 비밀번호를 넣습니다. '
+       '스크린 <b>대기 판</b>에도 이 QR이 크게 나오고, 아래 포스터를 인쇄해 입구나 테이블에 두어도 됩니다.</div>')
+    c1, c2 = st.columns([1, 2.2], vertical_alignment="center")
+    c1.markdown(f'<img src="{entry_qr(url)}" alt="행사 공통 QR" style="width:100%;max-width:220px;background:#fff;padding:8px;border-radius:4px">',
+                unsafe_allow_html=True)
+    with c2:
+        st.download_button("🖨 행사 포스터 내려받기 (A4 · 공통 QR)", poster_html(url, S), file_name="행사포스터_공통QR.html",
+                           mime="text/html", type="primary", use_container_width=True)
+        md(f'<div class="mx mx-note">QR 주소: <b>{ESC(url)}</b><br>파일을 열고 <b>Ctrl + P</b> → 설정에서 <b>배경 그래픽</b>을 켜고 인쇄하세요.</div>')
+    with st.expander("분임별 QR 카드 (필요할 때만)"):
+        st.download_button("🖨 분임별 QR 카드 내려받기 (A4 한 장에 2분임)", qr_cards_html(url, S), file_name="분임_QR카드.html",
+                           mime="text/html", use_container_width=True)
     st.markdown(f"**스크린(프로젝터) 주소** `{url}/?view=screen` · **관리 화면** `{url}/?view=admin`")
 
 
@@ -1295,13 +1359,20 @@ def screen_view():
         else:
             st.image(r["path"], use_container_width=True)
     else:
-        md(f'<div class="sc-title">{ESC(S["event"])}</div><div class="sc-sub">분임 모션 영상</div>')
+        # 대기 판 = 행사 메인 화면: 공통 QR(찍으면 분임 고르기) + 분임별 진행 상태
+        url = base_url()
         cards = []
         for R in store.all_requests():
             g = R["g"]
             cards.append(f'<div class="sc-card"><div class="n">{ESC(S["names"][g - 1])} {badge(R["status"])}</div>'
                          f'<div class="t">{ESC(R["data"]["title"] or R["data"]["topic"])}</div></div>')
-        md('<div class="sc-board">' + "".join(cards) + "</div>")
+        qr = entry_qr(url) if url else ""
+        md(f'<div class="sc-sleigh">{_SLEIGH}</div><div class="sc-tree">{tree_svg("tr")}</div>')
+        md(f'<div class="sc-intro entry"><div class="ev">WINTER PREMIERE</div><div class="sc-title">{ESC(S["event"])}</div>'
+           f'<div class="sc-sub">AI 모션그래픽 광고제</div>'
+           + (f'<div class="sc-entry"><img src="{qr}" alt="행사 QR"></div>' if qr else "")
+           + '<div class="sc-how">휴대폰 카메라로 QR을 찍고 <b>우리 분임</b>을 골라 주세요</div>'
+           + '<div class="sc-board">' + "".join(cards) + "</div></div>")
 
     @st.fragment(run_every=2)
     def watch():
