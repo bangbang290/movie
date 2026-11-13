@@ -24,101 +24,246 @@ BADGE = {"draft": ("작성 중", "#8a7a62", "#efe6cf"), "submitted": ("접수 �
          "making": ("제작 중", "#b4560f", "#fbe7d2"), "done": ("완성", "#1f7a3c", "#dcf2e1"),
          "revise": ("수정 요청", "#b3261e", "#fbdedb")}
 
+# 디자인: 윈터 매직(와인색 바탕 · 샴페인 금색 · 상아색 영화표 · 명조체) — 색은 아래 값과 .streamlit/config.toml에서 함께 바꿈
+FONTS = ('@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500'
+         '&family=Noto+Serif+KR:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap");')
+TWINKLE = ("@keyframes tw{0%,100%{opacity:1}50%{opacity:.18}}@keyframes pl{0%,100%{opacity:1}50%{opacity:.62}}"
+           ".tw{animation:tw 2.2s ease-in-out infinite}.pl{animation:pl 2.8s ease-in-out infinite}"
+           "@media (prefers-reduced-motion: reduce){.tw,.pl{animation:none}}")
+
 BASE_CSS = """<style>
-@import url("https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Yeon+Sung&display=swap");
+""" + FONTS + TWINKLE + """
 header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],[data-testid="stStatusWidget"],#MainMenu,footer{display:none!important}
 [data-stale="true"],.stale-element{opacity:1!important;transition:none!important}
-.stApp{background:linear-gradient(180deg,#d6ecdf 0%,#f4e7c6 60%,#f4e7c6 100%)}
-.block-container{max-width:760px!important;padding-top:1rem!important;padding-bottom:4rem!important}
-.stApp,.stMarkdown,.stTextInput,.stTextArea,.stRadio,.stSelectbox{font-family:"Gowun Dodum","Malgun Gothic","Apple SD Gothic Neo",sans-serif}
-.mx{font-family:"Gowun Dodum","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#2b2218}
-.mx-card{background:#fffaf0;border:2.5px solid #2b2218;border-radius:14px;box-shadow:3px 3px 0 #2b2218;padding:.9rem 1rem;margin:.2rem 0 .8rem}
+.stApp{background:#6B1F2C}
+.stApp::before{content:"";position:fixed;inset:10px;border:1px solid #D6B676;pointer-events:none;z-index:1}
+.stApp::after{content:"";position:fixed;inset:15px;border:1px solid #8E6F45;pointer-events:none;z-index:1}
+.block-container{max-width:760px!important;padding-top:1.8rem!important;padding-bottom:4rem!important}
+.stApp,.stMarkdown,.stTextInput,.stTextArea,.stRadio,.stSelectbox{font-family:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif}
+.mx{font-family:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#F4EAD5}
+.mx-card{background:#F4EAD5;color:#3A1F17;border-radius:4px;box-shadow:inset 0 0 0 5px #F4EAD5,inset 0 0 0 6px #D6B676;padding:1.05rem 1.2rem;margin:.2rem 0 .8rem}
+.mx-card .mx-note{color:#5B4636}
+.mx-card .mx-ev{color:#7A5A3C}
 .mx-top{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
-.mx-ev{font-size:.95rem;color:#6a5a45}
-.mx-h1{font-family:"Yeon Sung","Malgun Gothic",sans-serif;font-size:2.1rem;line-height:1.1;margin:.1rem 0}
-.mx-badge{display:inline-block;font-family:"Yeon Sung",sans-serif;font-size:1.15rem;padding:.05rem .75rem;border-radius:999px;border:2px solid currentColor;white-space:nowrap}
+.mx-ev{font-family:"Cormorant Garamond","Noto Serif KR",serif;font-size:.95rem;font-weight:600;letter-spacing:.1em;color:#D6B676}
+.mx-h1{font-family:"Noto Serif KR",serif;font-weight:600;font-size:2rem;line-height:1.25;margin:.15rem 0}
+.mx-badge{display:inline-block;font-family:"Noto Serif KR",serif;font-weight:500;font-size:1rem;padding:.05rem .75rem;border-radius:999px;border:1.5px solid currentColor;white-space:nowrap}
 .mx-steps{display:flex;gap:.3rem;margin:.7rem 0 .1rem;flex-wrap:wrap}
-.mx-steps span{flex:1 1 0;min-width:4.6rem;text-align:center;font-size:.85rem;padding:.35rem .2rem;border-radius:9px;background:#efe6cf;color:#8a7a62;border:1.5px solid transparent}
-.mx-steps span.on{background:#2b2218;color:#fffaf0}
-.mx-steps span.ok{background:#e9dfc4;color:#2b2218}
-.mx-note{font-size:.95rem;color:#5b4c39;line-height:1.55}
-.mx-sec{font-family:"Yeon Sung","Malgun Gothic",sans-serif;font-size:1.45rem;margin:1.2rem 0 .3rem;display:flex;align-items:center;gap:.45rem}
-.mx-sec i{font-style:normal;display:inline-grid;place-items:center;width:1.7rem;height:1.7rem;border-radius:50%;background:#cf4430;color:#fff;font-size:1.05rem}
-.mx-warn{font-size:.92rem;line-height:1.5;padding:.6rem .8rem;border-radius:10px;background:#fff3e8;border:1.5px dashed #cf4430;margin:.3rem 0 .6rem}
+.mx-steps span{flex:1 1 0;min-width:4.6rem;text-align:center;font-size:.85rem;padding:.35rem .2rem;border-radius:3px;background:#E9DCC0;color:#7A5A3C}
+.mx-steps span.on{background:#6B1F2C;color:#F4EAD5}
+.mx-steps span.ok{background:#E2CFA8;color:#3A1F17}
+.mx-note{font-size:.95rem;color:#E5D3C2;line-height:1.6;word-break:keep-all}
+.mx-note a{color:#E8D4A8}
+.mx-sec{font-family:"Noto Serif KR",serif;font-weight:500;font-size:1.3rem;letter-spacing:.04em;color:#D6B676;margin:1.3rem 0 .4rem;display:flex;align-items:center;gap:.5rem}
+.mx-sec i{font-style:normal;display:inline-grid;place-items:center;width:1.65rem;height:1.65rem;border-radius:50%;background:#D6B676;color:#6B1F2C;font-size:.95rem}
+.mx-warn{font-size:.92rem;line-height:1.55;padding:.65rem .85rem;border-radius:4px;background:#F4EAD5;color:#3A1F17;border:1.5px dashed #C9A45C;margin:.3rem 0 .6rem}
+.mx-warn a{color:#9E2236}
 .mx-sum{font-size:.98rem;line-height:1.6}
-.mx-sum b{font-family:"Yeon Sung",sans-serif;font-weight:400;font-size:1.08rem}
-.mx-sum .sc{border-top:1px dashed #cdbf9e;padding:.45rem 0}
+.mx-sum b{font-family:"Noto Serif KR",serif;font-weight:600;font-size:1.02rem}
+.mx-sum .sc{border-top:1px dashed #C9B48E;padding:.45rem 0}
 .mx-chat{display:flex;flex-direction:column;gap:.45rem;margin:.3rem 0 .8rem}
-.mx-chat div{max-width:86%;padding:.5rem .75rem;border-radius:14px;font-size:.98rem;line-height:1.5;border:2px solid #2b2218;white-space:pre-wrap;word-break:keep-all}
-.mx-chat .me{align-self:flex-end;background:#fffaf0;border-bottom-right-radius:4px}
-.mx-chat .them{align-self:flex-start;background:#dfe7fb;border-bottom-left-radius:4px}
-.mx-chat small{display:block;font-size:.75rem;color:#7a6a55;margin-top:.15rem}
-div[data-testid="stButton"] button,div[data-testid="stFormSubmitButton"] button,div[data-testid="stDownloadButton"] button{border-radius:12px!important;border:2.5px solid #2b2218!important;box-shadow:0 3px 0 #2b2218;min-height:2.9rem;background:#fffaf0;color:#2b2218}
-div[data-testid="stButton"] button p,div[data-testid="stFormSubmitButton"] button p,div[data-testid="stDownloadButton"] button p{font-size:1.08rem}
-div[data-testid="stButton"] button[kind="primary"],div[data-testid="stFormSubmitButton"] button[kind="primaryFormSubmit"]{background:#cf4430;color:#fff}
-div[data-testid="stButton"] button:active{transform:translateY(2px);box-shadow:0 1px 0 #2b2218}
-div[class*="st-key-row_"] [data-testid="stHorizontalBlock"]{flex-wrap:nowrap!important;gap:.4rem!important}
+.mx-chat div{max-width:86%;padding:.55rem .8rem;border-radius:10px;font-size:.98rem;line-height:1.5;color:#3A1F17;white-space:pre-wrap;word-break:keep-all}
+.mx-chat .me{align-self:flex-end;background:#F4EAD5;border-bottom-right-radius:3px}
+.mx-chat .them{align-self:flex-start;background:#E8D4A8;border-bottom-left-radius:3px}
+.mx-chat small{display:block;font-size:.75rem;color:#7A5A3C;margin-top:.15rem}
+.mx-hero{display:flex;flex-direction:column;align-items:center;text-align:center;margin:.2rem 0 .4rem}
+.mx-orn{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;padding:0 8px;font-family:"Cormorant Garamond","Noto Serif KR",serif;font-size:.8rem;font-weight:600;letter-spacing:.32em;color:#D6B676;white-space:nowrap}
+.mx-orn::before,.mx-orn::after{content:"";flex:1;height:1px;background:#D6B676}
+.mx-orn.sub{font-family:"Noto Serif KR",serif;font-size:.88rem;font-weight:500;letter-spacing:.12em;margin:1.4rem 0 .5rem}
+.mx-orn.sub::before,.mx-orn.sub::after{background:#8E6F45}
+.mx-subt{font-family:"Noto Serif KR",serif;font-size:.88rem;font-weight:500;letter-spacing:.14em;color:#D6B676}
+.mx-foot{text-align:center;margin-top:1.6rem;font-family:"Cormorant Garamond",serif;font-style:italic;font-size:1.15rem;font-weight:500;color:#D6B676}
+div[data-testid="stButton"] button,div[data-testid="stFormSubmitButton"] button,div[data-testid="stDownloadButton"] button{border-radius:3px!important;border:0!important;box-shadow:inset 0 0 0 4px #F4EAD5,inset 0 0 0 5px #D6B676!important;min-height:2.9rem;background:#F4EAD5!important;color:#3A1F17!important}
+div[data-testid="stButton"] button p,div[data-testid="stFormSubmitButton"] button p,div[data-testid="stDownloadButton"] button p{font-family:"Noto Serif KR",serif;font-weight:600;font-size:1.05rem}
+div[data-testid="stButton"] button[kind="primary"],div[data-testid="stFormSubmitButton"] button[kind="primaryFormSubmit"]{background:#D6B676!important;color:#2A140F!important;box-shadow:inset 0 0 0 4px #D6B676,inset 0 0 0 5px #6B1F2C!important}
+div[data-testid="stButton"] button:hover,div[data-testid="stFormSubmitButton"] button:hover{filter:brightness(1.05)}
+div[data-testid="stButton"] button:active{transform:translateY(1px)}
+div[data-testid="stButton"] button:disabled{opacity:.45}
+div[class*="st-key-row_"] [data-testid="stHorizontalBlock"]{flex-wrap:nowrap!important;gap:.6rem!important}
 div[class*="st-key-row_"] [data-testid="stColumn"]{min-width:0!important}
 div[class*="st-key-row_"] button{min-height:2.4rem!important;padding:0 .4rem!important}
-div[class*="st-key-scene_"]{background:#fffaf0;border-radius:12px}
-[data-testid="stExpander"] details{background:#fffaf0;border:2px solid #2b2218;border-radius:12px}
+div[class*="st-key-pick_"] button{min-height:64px!important;flex-direction:column!important;gap:1px;
+ -webkit-mask:radial-gradient(circle 7px at 0 50%,#0000 97%,#000) left/51% 100% no-repeat,radial-gradient(circle 7px at 100% 50%,#0000 97%,#000) right/51% 100% no-repeat;
+ mask:radial-gradient(circle 7px at 0 50%,#0000 97%,#000) left/51% 100% no-repeat,radial-gradient(circle 7px at 100% 50%,#0000 97%,#000) right/51% 100% no-repeat}
+div[class*="st-key-pick_"] button::before{font-family:"Cormorant Garamond",serif;font-size:.74rem;font-weight:600;letter-spacing:.22em;color:#7A5A3C}
+div[class*="st-key-pick_"] button p{font-size:1.2rem!important}
+div[class*="st-key-scene_"]{background:#5A1A26;border-radius:6px}
+[data-testid="stExpander"] details{background:#5A1A26;border:1px solid #8E6F45;border-radius:6px}
 </style>"""
 
 ADMIN_CSS = """<style>
 .block-container{max-width:1200px!important}
-.mx-tbl{width:100%;border-collapse:collapse;font-size:.98rem;background:#fffaf0;border:2.5px solid #2b2218;border-radius:12px;overflow:hidden}
-.mx-tbl th,.mx-tbl td{padding:.5rem .6rem;border-bottom:1px solid #e3d7b8;text-align:left;vertical-align:middle}
-.mx-tbl th{background:#2b2218;color:#fffaf0;font-weight:400;font-family:"Yeon Sung",sans-serif;font-size:1.05rem}
-.mx-tbl .new{color:#fff;background:#cf4430;border-radius:999px;padding:0 .5rem;font-size:.85rem}
+.mx-tbl{width:100%;border-collapse:collapse;font-size:.98rem;background:#F4EAD5;color:#3A1F17;border-radius:4px;overflow:hidden}
+.mx-tbl th,.mx-tbl td{padding:.5rem .6rem;border-bottom:1px solid #E2D2B0;text-align:left;vertical-align:middle}
+.mx-tbl th{background:#4F1520;color:#F4EAD5;font-weight:500;font-family:"Noto Serif KR",serif;font-size:1rem}
+.mx-tbl .new{color:#fff;background:#C22D45;border-radius:999px;padding:0 .5rem;font-size:.85rem}
 </style>"""
 
 SCREEN_CSS = """<style>
-@import url("https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Nanum+Brush+Script&family=Yeon+Sung&display=swap");
+""" + FONTS + TWINKLE + """
 header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],[data-testid="stStatusWidget"],#MainMenu,footer{display:none!important}
 [data-stale="true"],.stale-element{opacity:1!important;transition:none!important}
-.stApp{background:#0e0b08}
-.block-container{max-width:100%!important;padding:1.2vh 2.2vw 0!important}
-.sc-head{display:flex;align-items:baseline;gap:1.2vw;color:#f4e7c6;font-family:"Yeon Sung",sans-serif;margin:0 0 1vh}
-.sc-head b{font-weight:400;font-size:clamp(1.6rem,3vw,3rem)}
-.sc-head span{font-size:clamp(1rem,1.6vw,1.6rem);color:#c9b892}
-[data-testid="stVideo"] video,.stVideo video{width:100%!important;max-height:86vh;background:#000;border-radius:10px}
-[data-testid="stImage"] img{max-height:86vh;object-fit:contain}
-.sc-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(24vw,340px),1fr));gap:1.4vw;margin-top:2vh}
-.sc-card{background:#fffaf0;border:3px solid #2b2218;border-radius:16px;box-shadow:5px 5px 0 #000;padding:1.4vw 1.6vw;font-family:"Gowun Dodum",sans-serif;color:#2b2218}
-.sc-card .n{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.4rem,2.4vw,2.6rem)}
+.stApp{background:#6B1F2C}
+.stApp::before{content:"";position:fixed;inset:2.2vh 1.6vw;border:1px solid #D6B676;pointer-events:none;z-index:1}
+.stApp::after{content:"";position:fixed;inset:3.1vh 2.2vw;border:1px solid #8E6F45;pointer-events:none;z-index:1}
+.block-container{max-width:100%!important;padding:5vh 4vw 0!important}
+.sc-garland{position:fixed;left:4vw;right:4vw;top:4.2vh;z-index:2;pointer-events:none}
+.sc-garland svg{width:100%;height:auto;overflow:visible;display:block}
+.sc-sleigh{position:fixed;left:4.2vw;bottom:10vh;width:23vw;z-index:2;pointer-events:none}
+.sc-tree{position:fixed;right:5vw;bottom:5.5vh;height:44vh;z-index:2;pointer-events:none}
+.sc-sleigh svg,.sc-tree svg{width:100%;height:100%;overflow:visible;display:block}
+.sc-head{display:flex;align-items:baseline;gap:1.2vw;color:#F4EAD5;font-family:"Noto Serif KR",serif;margin:0 0 1vh}
+.sc-head b{font-weight:600;font-size:clamp(1.5rem,2.6vw,2.8rem)}
+.sc-head span{font-size:clamp(1rem,1.5vw,1.6rem);color:#D6B676}
+[data-testid="stVideo"] video,.stVideo video{width:100%!important;max-height:84vh;background:#000;border-radius:4px}
+[data-testid="stImage"] img{max-height:84vh;object-fit:contain}
+.sc-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(24vw,340px),1fr));gap:1.4vw;margin-top:3vh}
+.sc-card{background:#F4EAD5;border-radius:4px;box-shadow:inset 0 0 0 6px #F4EAD5,inset 0 0 0 7px #D6B676;padding:1.6vw 1.9vw;font-family:"Noto Sans KR",sans-serif;color:#3A1F17}
+.sc-card .n{font-family:"Noto Serif KR",serif;font-weight:600;font-size:clamp(1.3rem,2.1vw,2.3rem)}
 .sc-card .t{font-size:clamp(1rem,1.3vw,1.4rem);margin-top:.4vh;min-height:1.5em}
-.sc-title{font-family:"Nanum Brush Script",serif;color:#f4e7c6;font-size:clamp(3rem,7vw,7rem);line-height:1;text-align:center;margin-top:4vh}
-.sc-sub{font-family:"Yeon Sung",sans-serif;color:#c9b892;text-align:center;font-size:clamp(1.2rem,2vw,2rem)}
-.mx-badge{display:inline-block;font-family:"Yeon Sung",sans-serif;font-size:clamp(.9rem,1.1vw,1.2rem);padding:.05rem .7rem;border-radius:999px;border:2px solid currentColor;white-space:nowrap;vertical-align:middle}
-.sc-intro{min-height:94vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2.2vh;color:#f4e7c6;font-family:"Gowun Dodum",sans-serif}
-.sc-intro .ev{font-family:"Yeon Sung",sans-serif;font-size:clamp(1rem,1.6vw,1.7rem);color:#c9b892;letter-spacing:.12em}
-.sc-intro .grp{font-family:"Yeon Sung",sans-serif;font-size:clamp(2rem,4.6vw,4.8rem);color:#e8b04a;line-height:1}
-.sc-intro .ttl{font-family:"Nanum Brush Script",serif;font-size:clamp(3.4rem,9vw,9.5rem);line-height:1.05;color:#fffaf0;max-width:92vw;word-break:keep-all}
-.sc-intro .fmt{font-family:"Yeon Sung",sans-serif;font-size:clamp(1rem,1.6vw,1.7rem);padding:.1rem 1.1rem;border:2px solid #c9b892;border-radius:999px;color:#c9b892}
-.sc-intro .cr{display:flex;flex-wrap:wrap;justify-content:center;gap:.6vh 2.6vw;font-size:clamp(1.1rem,2vw,2.2rem)}
-.sc-intro .cr i{font-style:normal;color:#c9b892;font-size:.72em;margin-right:.45em}
-.sc-intro .pitch{max-width:72vw;font-size:clamp(1.1rem,1.8vw,2rem);line-height:1.55;background:#1d1711;border-left:6px solid #cf4430;border-radius:12px;padding:1.8vh 2.2vw;text-align:left;word-break:keep-all}
-.sc-intro .pitch b{display:block;font-family:"Yeon Sung",sans-serif;font-weight:400;color:#e8b04a;font-size:.8em;margin-bottom:.5vh}
-.sc-intro .soon{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.1rem,1.7vw,1.8rem);color:#ef6a55;animation:scblink 1.6s ease-in-out infinite}
-@keyframes scblink{50%{opacity:.3}}
-.sc-vote{display:flex;align-items:center;justify-content:center;gap:5vw;margin-top:2vh}
-.sc-vote img{width:44vh;height:44vh;background:#fff;border-radius:18px;padding:1.8vh;box-sizing:border-box}
+.sc-title{font-family:"Noto Serif KR",serif;font-weight:600;color:#F4EAD5;font-size:clamp(2.6rem,5.2vw,5.6rem);line-height:1.15;text-align:center;margin-top:8vh}
+.sc-sub{font-family:"Cormorant Garamond","Noto Serif KR",serif;font-weight:600;letter-spacing:.3em;color:#D6B676;text-align:center;font-size:clamp(1rem,1.6vw,1.7rem)}
+.mx-badge{display:inline-block;font-family:"Noto Serif KR",serif;font-weight:500;font-size:clamp(.85rem,1.05vw,1.15rem);padding:.05rem .7rem;border-radius:999px;border:1.5px solid currentColor;white-space:nowrap;vertical-align:middle}
+.sc-intro{position:relative;z-index:3;min-height:88vh;max-width:52vw;margin:0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#F4EAD5;font-family:"Noto Serif KR",serif}
+.sc-intro.wide{max-width:92vw}
+.sc-intro .ev{width:100%;display:flex;align-items:center;gap:1.2vw;font-family:"Cormorant Garamond","Noto Serif KR",serif;font-weight:600;font-size:clamp(.9rem,1.25vw,1.4rem);letter-spacing:.3em;color:#D6B676;white-space:nowrap}
+.sc-intro .ev::before,.sc-intro .ev::after{content:"";flex:1;height:1px;background:#D6B676}
+.sc-intro .grp{margin-top:3.6vh;font-size:clamp(1.3rem,2vw,2.2rem);font-weight:500;letter-spacing:.12em;color:#D6B676}
+.sc-intro .ttl{margin-top:.8vh;font-weight:600;font-size:clamp(2.8rem,6vw,6.4rem);line-height:1.15;color:#F4EAD5;word-break:keep-all}
+.sc-intro .fmt{margin-top:2vh;display:flex;align-items:center;gap:1vw;font-size:clamp(.9rem,1.2vw,1.35rem);font-weight:500;letter-spacing:.2em;color:#D6B676}
+.sc-intro .fmt::before,.sc-intro .fmt::after{content:"";width:2.2vw;height:1px;background:#D6B676}
+.sc-intro .cr{margin-top:3.4vh;display:flex;flex-wrap:wrap;justify-content:center;gap:.8vh 2.4vw;font-size:clamp(1rem,1.45vw,1.6rem);font-weight:500}
+.sc-intro .cr i{font-style:normal;color:#D6B676;font-size:.72em;letter-spacing:.1em;margin-right:.5em}
+.sc-intro .pitch{margin-top:4.4vh;width:min(41vw,100%);padding:2.4vh 0;border-top:1px solid #8E6F45;border-bottom:1px solid #8E6F45;font-size:clamp(1rem,1.45vw,1.6rem);line-height:1.75;color:#EAD9C8;word-break:keep-all}
+.sc-intro .pitch b{display:block;font-weight:500;font-size:.66em;letter-spacing:.22em;color:#D6B676;margin-bottom:1vh}
+.sc-intro .soon{margin-top:4vh;display:flex;align-items:center;gap:1vw;font-size:clamp(1rem,1.3vw,1.45rem);font-weight:500;letter-spacing:.3em;color:#D6B676;animation:pl 2.8s ease-in-out infinite}
+.sc-vote{display:flex;align-items:center;justify-content:center;gap:5vw;margin-top:3vh}
+.sc-vote img{width:44vh;height:44vh;background:#fff;border-radius:4px;padding:1.8vh;box-sizing:border-box;box-shadow:0 0 0 1px #D6B676,0 0 0 7px #6B1F2C,0 0 0 8px #8E6F45}
 .sc-vote .side{display:flex;flex-direction:column;gap:2.4vh;text-align:left;max-width:44vw}
-.sc-vote .how{font-size:clamp(1.3rem,2.4vw,2.6rem);line-height:1.45;color:#fffaf0}
-.sc-vote .url{font-size:clamp(.9rem,1.3vw,1.4rem);color:#c9b892;word-break:break-all}
-.sc-count{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.6rem,3vw,3.2rem);color:#e8b04a}
+.sc-vote .how{font-size:clamp(1.3rem,2.3vw,2.5rem);line-height:1.5;color:#F4EAD5}
+.sc-vote .how b{color:#D6B676}
+.sc-vote .url{font-family:"Noto Sans KR",sans-serif;font-size:clamp(.9rem,1.2vw,1.3rem);color:#CDB8A6;word-break:break-all}
+.sc-count{font-family:"Noto Serif KR",serif;font-weight:600;font-size:clamp(1.6rem,2.8vw,3rem);color:#D6B676}
 .sc-podium{display:flex;align-items:flex-end;justify-content:center;gap:2.4vw;margin-top:3vh;width:100%}
-.sc-podium .pd{flex:0 1 27vw;background:#fffaf0;color:#2b2218;border:3px solid #2b2218;border-radius:18px;box-shadow:6px 6px 0 #000;padding:3vh 1.6vw;text-align:center}
-.sc-podium .pd.p1{padding:7vh 1.6vw;background:#f6d77a}
-.sc-podium .pd.hide{background:#1d1711;color:#c9b892;border-color:#3a2f22;box-shadow:none}
-.sc-podium .aw{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.4rem,2.4vw,2.6rem);color:#cf4430}
-.sc-podium .hide .aw{color:#c9b892}
-.sc-podium .rk{font-size:clamp(1rem,1.4vw,1.5rem);color:#6a5a45}
-.sc-podium .gn{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.8rem,3.4vw,3.8rem);line-height:1.1;margin-top:1.2vh}
+.sc-podium .pd{flex:0 1 27vw;background:#F4EAD5;color:#3A1F17;border-radius:4px;box-shadow:inset 0 0 0 6px #F4EAD5,inset 0 0 0 7px #D6B676;padding:3.4vh 1.6vw;text-align:center}
+.sc-podium .pd.p1{padding:7vh 1.6vw;background:#D6B676;box-shadow:inset 0 0 0 6px #D6B676,inset 0 0 0 7px #6B1F2C}
+.sc-podium .pd.hide{background:#561826;color:#D6B676;box-shadow:inset 0 0 0 1px #8E6F45}
+.sc-podium .aw{font-family:"Noto Serif KR",serif;font-weight:600;font-size:clamp(1.4rem,2.3vw,2.5rem);color:#9E2236}
+.sc-podium .hide .aw{color:#D6B676}
+.sc-podium .rk{font-family:"Cormorant Garamond","Noto Serif KR",serif;font-weight:600;letter-spacing:.2em;font-size:clamp(1rem,1.4vw,1.5rem);color:#7A5A3C}
+.sc-podium .gn{font-family:"Noto Serif KR",serif;font-weight:600;font-size:clamp(1.8rem,3.2vw,3.6rem);line-height:1.15;margin-top:1.2vh}
 .sc-podium .gt{font-size:clamp(1rem,1.5vw,1.6rem);margin-top:.5vh;word-break:keep-all}
-.sc-podium .gv{font-family:"Yeon Sung",sans-serif;font-size:clamp(1.1rem,1.9vw,2.1rem);margin-top:.8vh;color:#1f3f8f}
-.sc-podium .q{font-family:"Yeon Sung",sans-serif;font-size:clamp(3rem,7vw,7.5rem);line-height:1}
+.sc-podium .gv{font-family:"Noto Serif KR",serif;font-weight:600;font-size:clamp(1.1rem,1.8vw,2rem);margin-top:.8vh;color:#6B1F2C}
+.sc-podium .q{font-family:"Cormorant Garamond",serif;font-size:clamp(3rem,7vw,7.5rem);line-height:1}
 </style>"""
+
+
+# ───────────────────────── 그림(트리 · 산타 썰매 · 전구 줄) — 한 줄 SVG로 만들어 화면에 넣음
+_TREE = (
+    '<svg viewBox="0 0 120 160" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"{flip}>'
+    '<defs><linearGradient id="g{u}" x1="0" y1="0" x2="1" y2="0"><stop offset="0.5" stop-color="#2E9479"></stop><stop offset="0.5" stop-color="#21705C"></stop></linearGradient>'
+    '<filter id="f{u}" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="1.2" result="b"></feGaussianBlur><feMerge><feMergeNode in="b"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter>'
+    '<filter id="h{u}" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="12"></feGaussianBlur></filter></defs>'
+    '<ellipse cx="60" cy="84" rx="50" ry="66" fill="#F2B45E" fill-opacity="0.28" filter="url(#h{u})"></ellipse>'
+    '<ellipse cx="60" cy="147" rx="52" ry="3.5" fill="#000000" fill-opacity="0.25"></ellipse>'
+    '<rect x="53" y="122" width="14" height="18" rx="2" fill="#9A6A45"></rect><path d="M53 128H67M53 134H67" stroke="#7A5032" stroke-width="1"></path>'
+    '<path d="M60 70Q74 100 106 124Q96.8 132 87.6 124Q78.4 132 69.2 124Q60 132 50.8 124Q41.6 132 32.4 124Q23.2 132 14 124Q46 100 60 70Z" fill="url(#g{u})"></path>'
+    '<path d="M27 117Q56 124 86 109" stroke="#0F3D33" stroke-width="0.7"></path>'
+    '<circle cx="40" cy="111" r="2.6" fill="#D8394A"></circle><circle cx="82" cy="120" r="2.6" fill="#F5B83D"></circle><circle cx="64" cy="122" r="2.6" fill="#D8394A"></circle>'
+    '<path d="M90 114V108.5A2.5 2.5 0 0 0 85 108.5" stroke="#FFFFFF" stroke-width="1.7"></path><path d="M90 114V108.5A2.5 2.5 0 0 0 85 108.5" stroke="#D8394A" stroke-width="1.7" stroke-dasharray="1.6 1.6" stroke-linecap="butt"></path>'
+    '<path d="M60 50Q72 76 98 100Q88.5 108 79 100Q69.5 108 60 100Q50.5 108 41 100Q31.5 108 22 100Q48 76 60 50Z" fill="url(#g{u})"></path>'
+    '<path d="M33 96Q60 102 81 89" stroke="#0F3D33" stroke-width="0.7"></path>'
+    '<circle cx="36" cy="91" r="2.6" fill="#F5B83D"></circle><circle cx="76" cy="96" r="2.6" fill="#D8394A"></circle><circle cx="60" cy="86" r="2.6" fill="#F5B83D"></circle>'
+    '<path d="M46 92V85.5A2.5 2.5 0 0 0 41 85.5" stroke="#FFFFFF" stroke-width="1.7"></path><path d="M46 92V85.5A2.5 2.5 0 0 0 41 85.5" stroke="#D8394A" stroke-width="1.7" stroke-dasharray="1.6 1.6" stroke-linecap="butt"></path>'
+    '<path d="M60 32Q70 56 90 76Q82.5 83 75 76Q67.5 83 60 76Q52.5 83 45 76Q37.5 83 30 76Q50 56 60 32Z" fill="url(#g{u})"></path>'
+    '<path d="M38 70Q58 76 76 64" stroke="#0F3D33" stroke-width="0.7"></path>'
+    '<circle cx="44" cy="64" r="2.4" fill="#D8394A"></circle><circle cx="70" cy="72" r="2.4" fill="#F5B83D"></circle>'
+    '<path d="M66 68V61.5A2.5 2.5 0 0 0 61 61.5" stroke="#FFFFFF" stroke-width="1.7"></path><path d="M66 68V61.5A2.5 2.5 0 0 0 61 61.5" stroke="#D8394A" stroke-width="1.7" stroke-dasharray="1.6 1.6" stroke-linecap="butt"></path>'
+    '<path d="M60 16Q68 36 82 52Q74.67 58 67.33 52Q60 58 52.67 52Q45.33 58 38 52Q52 36 60 16Z" fill="url(#g{u})"></path>'
+    '<path d="M49 44Q60 48 70 38" stroke="#0F3D33" stroke-width="0.7"></path>'
+    '<circle cx="57" cy="30" r="2.2" fill="#F5B83D"></circle><circle cx="66" cy="48" r="2.2" fill="#D8394A"></circle>'
+    '<g filter="url(#f{u})">'
+    '<circle class="tw" cx="38.6" cy="119" r="1.4" fill="#FF6B6B"></circle>'
+    '<circle class="tw" cx="50.4" cy="119" r="1.4" fill="#FFD166" style="animation-delay:.6s"></circle>'
+    '<circle class="tw" cx="62.2" cy="117.5" r="1.4" fill="#6EC6FF" style="animation-delay:1.2s"></circle>'
+    '<circle class="tw" cx="74" cy="114.2" r="1.4" fill="#8EE07A" style="animation-delay:1.8s"></circle>'
+    '<circle class="tw" cx="46.1" cy="97.8" r="1.4" fill="#FFD166" style="animation-delay:.3s"></circle>'
+    '<circle class="tw" cx="58.5" cy="97.25" r="1.4" fill="#FF9BD2" style="animation-delay:.9s"></circle>'
+    '<circle class="tw" cx="70.1" cy="94.3" r="1.4" fill="#6EC6FF" style="animation-delay:1.5s"></circle>'
+    '<circle class="tw" cx="47.9" cy="71.9" r="1.3" fill="#8EE07A" style="animation-delay:.4s"></circle>'
+    '<circle class="tw" cx="57.5" cy="71.5" r="1.3" fill="#FF6B6B" style="animation-delay:1s"></circle>'
+    '<circle class="tw" cx="66.9" cy="68.9" r="1.3" fill="#FFD166" style="animation-delay:1.6s"></circle>'
+    '<circle class="tw" cx="56.1" cy="45.1" r="1.3" fill="#6EC6FF" style="animation-delay:.7s"></circle>'
+    '<circle class="tw" cx="63.2" cy="43.1" r="1.3" fill="#FF9BD2" style="animation-delay:1.3s"></circle></g>'
+    '<path class="pl" d="M60 1L62.23 6.93L68.56 7.22L63.61 11.17L65.29 17.28L60 13.8L54.71 17.28L56.39 11.17L51.44 7.22L57.77 6.93Z" fill="#F5B83D" filter="url(#f{u})"></path>'
+    '<rect x="12" y="128" width="24" height="18" rx="1" fill="#2FA35F"></rect><path d="M24 128V146" stroke="#F5C542" stroke-width="2.2"></path>'
+    '<path d="M24 128C20 123 16.5 126.5 24 128ZM24 128C28 123 31.5 126.5 24 128Z" fill="#F5C542"></path>'
+    '<rect x="30" y="135" width="16" height="11" rx="1" fill="#F5C542"></rect><path d="M38 135V146" stroke="#FFFFFF" stroke-width="1.8"></path>'
+    '<path d="M38 135C35 131 32 134 38 135ZM38 135C41 131 44 134 38 135Z" fill="#FFFFFF"></path>'
+    '<rect x="62" y="139" width="12" height="7" rx="1" fill="#2FA35F"></rect><path d="M68 139V146" stroke="#F5C542" stroke-width="1.4"></path>'
+    '<rect x="74" y="134" width="18" height="12" rx="1" fill="#D8394A"></rect><path d="M83 134V146" stroke="#F5C542" stroke-width="2"></path>'
+    '<path d="M83 134C80 130 77 133 83 134ZM83 134C86 130 89 133 83 134Z" fill="#F5C542"></path>'
+    '<rect x="92" y="124" width="16" height="22" rx="1" fill="#C22D45"></rect><path d="M100 124V146" stroke="#FFFFFF" stroke-width="2"></path>'
+    '<path d="M100 124C96.5 119.5 93 123 100 124ZM100 124C103.5 119.5 107 123 100 124Z" fill="#FFFFFF"></path></svg>')
+
+_STAR4 = 'l1 3.2 3.2 1-3.2 1-1 3.2-1-3.2-3.2-1 3.2-1z'
+_SLEIGH = (
+    '<svg viewBox="0 0 200 140" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    '<defs><filter id="fS" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="1.2" result="b"></feGaussianBlur><feMerge><feMergeNode in="b"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter>'
+    '<filter id="hS" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="14"></feGaussianBlur></filter></defs>'
+    '<ellipse cx="100" cy="82" rx="96" ry="52" fill="#F2B45E" fill-opacity="0.22" filter="url(#hS)"></ellipse>'
+    '<path d="M-34 138Q-6 132 10 116" stroke="#F5C542" stroke-width="2" stroke-dasharray="0.1 5"></path>'
+    '<g filter="url(#fS)" fill="#F5C542">'
+    f'<path class="tw" d="M-12 116{_STAR4}" style="animation-delay:.2s"></path><path class="tw" d="M18 126{_STAR4}" style="animation-delay:1.1s"></path>'
+    f'<path class="tw" d="M104 28{_STAR4}" style="animation-delay:.6s"></path><path class="tw" d="M136 14{_STAR4}" style="animation-delay:1.6s"></path>'
+    f'<path class="tw" d="M58 22{_STAR4}" style="animation-delay:1.3s"></path></g>'
+    '<g transform="rotate(-8 100 90)">'
+    '<path d="M66 74Q108 62 150 76" stroke="#E2B95C" stroke-width="1"></path><path d="M82 98Q115 92 147 85" stroke="#E2B95C" stroke-width="0.9"></path>'
+    '<path d="M20 80Q16 64 24 58Q27 54 30 58Q38 64 34 80Z" fill="#3E7A4F"></path><path d="M23.5 59.5Q27 62 30.5 59.5" stroke="#F5C542" stroke-width="1.4"></path>'
+    '<rect x="31" y="66" width="9" height="9" rx="0.8" fill="#F5C542"></rect><path d="M35.5 66V75" stroke="#D8394A" stroke-width="1.2"></path>'
+    '<path d="M38 78Q38 62 48 60Q58 62 58 78Z" fill="#D8394A"></path><path d="M54 68Q61 70 66 74" stroke="#D8394A" stroke-width="5"></path>'
+    '<circle cx="66.5" cy="74.3" r="2.6" fill="#1F5A3A"></circle><circle cx="48" cy="52" r="6" fill="#F2C9A8"></circle>'
+    '<path d="M42 52Q42 65 48 65Q54 65 54 52Q51 56 48 56Q45 56 42 52Z" fill="#FFFFFF"></path>'
+    '<circle cx="50.6" cy="51.4" r="0.85" fill="#2A1A12"></circle><circle cx="52.4" cy="53.6" r="1.1" fill="#E89A86"></circle>'
+    '<path d="M42 49Q45 38 52 38Q58 39 60.5 46L55 49Q48 46.5 42 49Z" fill="#D8394A"></path>'
+    '<path d="M41 49.5Q48 46 55.5 49.5L55.5 52.2Q48 48.8 41 52.2Z" fill="#FFFFFF"></path><circle cx="60.8" cy="46.6" r="2.3" fill="#FFFFFF"></circle>'
+    '<path d="M12 66Q10 60 16 60Q22 60 22 66L22 78L64 78Q72 78 74 86L76 98Q76 104 70 104L26 104Q14 104 12 92Z" fill="#C22D45"></path>'
+    '<path d="M22 80H63M14 92Q24 96 74 94" stroke="#F5C542" stroke-width="1.2"></path><circle cx="44" cy="91" r="3.2" stroke="#F5C542" stroke-width="1"></circle>'
+    '<path d="M28 104V112M62 104V112" stroke="#F5C542" stroke-width="1.6"></path><path d="M6 112H74Q86 112 86 102Q86 96 81 97" stroke="#F5C542" stroke-width="2.2"></path>'
+    '<path d="M126 86L116 96L108 100M130 88L124 100L120 108" stroke="#7A5032" stroke-width="3.2"></path>'
+    '<path d="M156 86L166 96L168 104M152 88L156 100L162 106" stroke="#7A5032" stroke-width="3.2"></path>'
+    '<circle cx="108" cy="100" r="1.7" fill="#3A2418"></circle><circle cx="120" cy="108" r="1.7" fill="#3A2418"></circle>'
+    '<circle cx="168" cy="104" r="1.7" fill="#3A2418"></circle><circle cx="162" cy="106" r="1.7" fill="#3A2418"></circle>'
+    '<path d="M117 77Q110 73 112 79Z" fill="#FFFFFF"></path><ellipse cx="140" cy="80" rx="24" ry="11" fill="#9A6A45"></ellipse>'
+    '<ellipse cx="140" cy="86" rx="17" ry="4.5" fill="#C8996C"></ellipse><path d="M156 76Q162 62 168 56L175 60Q169 70 162 83Z" fill="#9A6A45"></path>'
+    '<path d="M150 70Q153.5 80 150 90" stroke="#C22D45" stroke-width="3"></path><path d="M157 73Q163 76 170 66" stroke="#C22D45" stroke-width="3"></path>'
+    '<circle cx="161" cy="75.6" r="1.9" fill="#F5C542"></circle><circle cx="165.4" cy="72.6" r="1.9" fill="#F5C542"></circle><circle cx="151.6" cy="80" r="1.6" fill="#F5C542"></circle>'
+    '<path d="M170 48Q168 40 162 36M166 40Q164 36 165 33M162 36Q158 35 156 31M173 47Q174 39 178 34M175.6 39.4Q179 38 181 35M178 34Q178 30 176 28" stroke="#D9A867" stroke-width="1.7"></path>'
+    '<ellipse cx="174" cy="55" rx="8" ry="5.5" transform="rotate(-20 174 55)" fill="#9A6A45"></ellipse>'
+    '<path d="M167 50Q162.5 46 165 44Q169 47 169.5 50.5Z" fill="#7A5032"></path><ellipse cx="180.5" cy="57" rx="4.2" ry="3.1" fill="#C8996C"></ellipse>'
+    '<circle cx="184.4" cy="56.4" r="1.6" fill="#3A2418"></circle><circle cx="172.2" cy="52.6" r="0.95" fill="#2A1A12"></circle></g></svg>')
+
+_BULBS = ["#FFE7AE", "#FF6B6B", "#FFD166", "#6EC6FF", "#8EE07A"]
+
+
+def tree_svg(uid: str, flip: bool = False) -> str:
+    return _TREE.replace("{u}", uid).replace("{flip}", ' style="transform:scaleX(-1)"' if flip else "")
+
+
+def garland_svg() -> str:
+    """스크린 위쪽에 두 번 늘어진 전구 줄(전구마다 다른 박자로 반짝임)."""
+    dots = []
+    for k in range(19):
+        x = 59 * (k + 1)
+        t = (x % 590) / 590
+        y = 6 + 116 * t * (1 - t)
+        dots.append(f'<circle class="tw" cx="{x}" cy="{y:.1f}" r="3.4" fill="{_BULBS[k % 5]}" style="animation-delay:{(k * 0.37) % 2.2:.2f}s"></circle>')
+    return ('<div class="sc-garland"><svg viewBox="0 0 1180 44" fill="none" aria-hidden="true"><defs><filter id="fG" x="-300%" y="-300%" width="700%" height="700%">'
+            '<feGaussianBlur stdDeviation="2.4" result="b"></feGaussianBlur><feMerge><feMergeNode in="b"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter></defs>'
+            '<path d="M0 6Q295 64 590 6Q885 64 1180 6" stroke="#8E6F45" stroke-width="1.2"></path><g filter="url(#fG)">' + "".join(dots) + "</g></svg></div>")
+
+
+STAR_SMALL = '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12"><path d="M6 0l1.4 4.6L12 6l-4.6 1.4L6 12l-1.4-4.6L0 6l4.6-1.4z" fill="#D6B676"></path></svg>'
 
 
 def md(h: str):
@@ -242,19 +387,30 @@ def show_result(r: dict, key: str, big: bool = True):
 def home_view():
     md(BASE_CSS)
     S = store.get_settings()
-    md(f'<div class="mx mx-card"><div class="mx-ev">{ESC(S["event"])}</div><div class="mx-h1">🎬 모션 영상 의뢰</div>'
-       f'<div class="mx-note">분임별로 영상 기획서를 쓰고, 완성된 영상을 여기서 바로 봅니다.<br>분임 QR 카드를 찍으면 우리 분임 비밀번호 화면이 바로 열려요.</div></div>')
     pick = st.session_state.get("pick")
     if not pick:
-        md('<div class="mx mx-sec">우리 분임 고르기</div>')
+        md('<div class="mx mx-hero"><div class="mx-orn">WINTER PREMIERE</div>'
+           f'<div style="width:165px;height:220px;margin-top:.8rem">{tree_svg("hp")}</div>'
+           '<div class="mx-h1" style="margin-top:.9rem;font-size:2.1rem">모션 영상 의뢰</div>'
+           f'<div class="mx-subt">{ESC(S["event"])}</div>'
+           '<div class="mx-note" style="max-width:310px;margin-top:.5rem">분임별로 영상 기획서를 쓰고, 완성된 영상을 여기서 바로 봅니다.<br>'
+           '분임 QR 카드를 찍으면 우리 분임 화면이 바로 열려요.</div></div>')
+        md('<div class="mx mx-orn sub">우리 분임을 골라 주세요</div>')
+        # 영화표 버튼: 분임마다 'ADMIT ONE · No. 01' 한 줄을 위에 붙임
+        md("<style>" + "".join(f'.st-key-pick_{g} button::before{{content:"ADMIT ONE · No. {g:02d}"}}'
+                               for g in range(1, store.N_GROUPS + 1)) + "</style>")
         for row in range(0, store.N_GROUPS, 2):
-            cols = st.columns(2)
-            for j, col in enumerate(cols):
-                g = row + j + 1
-                if g <= store.N_GROUPS and col.button(S["names"][g - 1], key=f"pick_{g}", use_container_width=True):
-                    st.session_state["pick"] = g
-                    st.rerun()
+            gs = [g for g in (row + 1, row + 2) if g <= store.N_GROUPS]
+            with st.container(key=f"row_pick_{row}"):
+                cols = st.columns(len(gs))
+                for g, col in zip(gs, cols):
+                    if col.button(S["names"][g - 1], key=f"pick_{g}", use_container_width=True):
+                        st.session_state["pick"] = g
+                        st.rerun()
+        md('<div class="mx mx-foot">Merry Christmas &amp; Happy New Year</div>')
         return
+    md(f'<div class="mx mx-hero"><div class="mx-orn">WINTER PREMIERE</div>'
+       f'<div class="mx-h1" style="margin-top:.6rem">모션 영상 의뢰</div><div class="mx-subt">{ESC(S["event"])}</div></div>')
     name = ESC(S["names"][pick - 1])
     if store.has_password(pick):
         md(f'<div class="mx mx-sec">{name} 비밀번호 넣기</div>')
@@ -1055,13 +1211,13 @@ def intro_html(g: int, S: dict) -> str:
     title = (d["title"] or d["topic"]).strip()
     credits = "".join(f'<span><i>{lab}</i>{ESC(d[k])}</span>' for k, lab in store.ROLES if d[k].strip())
     pitch = d["pitch"].strip()
-    return (f'<div class="sc-intro"><div class="ev">{ESC(S["event"])} · {pos}</div>'
+    return (f'<div class="sc-intro"><div class="ev">WINTER PREMIERE · {pos}</div>'
             f'<div class="grp">{ESC(S["names"][g - 1])}</div>'
-            + (f'<div class="ttl"{" style=font-size:clamp(2.6rem,5.6vw,6rem)" if len(title) > 14 else ""}>{ESC(title)}</div>' if title else "")
+            + (f'<div class="ttl"{" style=font-size:clamp(2.2rem,4.2vw,4.4rem)" if len(title) > 14 else ""}>{ESC(title)}</div>' if title else "")
             + f'<div class="fmt">{ESC(store.format_text(d))}</div>'
             + (f'<div class="cr">{credits}</div>' if credits else "")
             + (f'<div class="pitch"><b>기획 의도 · 관전 포인트</b>{ESC(pitch).replace(chr(10), "<br>")}</div>' if pitch else "")
-            + '<div class="soon">곧 상영합니다</div></div>')
+            + f'<div class="soon">{STAR_SMALL}곧 상영합니다{STAR_SMALL}</div></div>')
 
 
 def vote_screen_html(S: dict) -> str:
@@ -1071,15 +1227,15 @@ def vote_screen_html(S: dict) -> str:
     count = f'<div class="sc-count">참여 {len(store.voters())}' + (f" / {total}명" if total else "명") + "</div>"
     if stt == "closed":
         return (f'<div class="sc-intro"><div class="ev">{ESC(S["event"])}</div><div class="ttl">투표 마감!</div>'
-                f'{count}<div class="soon">곧 결과를 발표합니다</div></div>')
+                f'<div style="margin-top:3vh">{count}</div><div class="soon">{STAR_SMALL}곧 결과를 발표합니다{STAR_SMALL}</div></div>')
     url = f"{base_url()}/?view=vote"
     try:
         import segno
         img = f'<img src="{segno.make(url, error="m").svg_data_uri(scale=10, border=1, dark="#000000", light="#ffffff")}" alt="투표 QR">'
     except Exception:
         img = ""
-    return (f'<div class="sc-intro"><div class="ev">{ESC(S["event"])} · 1인 1표</div>'
-            f'<div class="ttl" style="font-size:clamp(3rem,7vw,7.5rem)">{"투표 시간!" if stt == "open" else "곧 투표가 열려요"}</div>'
+    return (f'<div class="sc-intro wide"><div class="ev" style="max-width:60vw">{ESC(S["event"])} · 1인 1표</div>'
+            f'<div class="ttl" style="font-size:clamp(2.6rem,5.4vw,5.8rem)">{"투표 시간!" if stt == "open" else "곧 투표가 열려요"}</div>'
             f'<div class="sc-vote">{img}<div class="side"><div class="how">휴대폰 카메라로 QR을 찍고<br><b>내 이름</b>을 쓴 다음<br>'
             f'우리 분임을 뺀 <b>한 편</b>을 골라 주세요</div>{count}<div class="url">{ESC(url)}</div></div></div></div>')
 
@@ -1104,8 +1260,8 @@ def result_html(S: dict, n: int) -> str:
         else:
             cards.append(f'<div class="pd hide{p1}"><div class="aw">{ESC(s["award"])}</div><div class="q">?</div></div>')
     head = "축하합니다!" if n >= len(steps) else "두구두구…" if n == 0 else "투표 결과"
-    return (f'<div class="sc-intro"><div class="ev">{ESC(S["event"])} · 투표 결과 발표</div>'
-            f'<div class="ttl" style="font-size:clamp(3rem,7vw,7.5rem)">{head}</div><div class="sc-podium">{"".join(cards)}</div></div>')
+    return (f'<div class="sc-intro wide"><div class="ev" style="max-width:60vw">{ESC(S["event"])} · 투표 결과 발표</div>'
+            f'<div class="ttl" style="font-size:clamp(2.6rem,5.4vw,5.8rem)">{head}</div><div class="sc-podium">{"".join(cards)}</div></div>')
 
 
 def screen_view():
@@ -1120,9 +1276,12 @@ def screen_view():
     tok = (lambda: f"play|{store.screen_get()}") if r else store.board_token
     st.session_state["scr_tok"] = tok()
     if store.rehearsal_info():
-        md('<div style="position:fixed;top:1.2vh;right:1.6vw;z-index:999;font-family:\'Yeon Sung\',sans-serif;color:#0e0b08;background:#e8b04a;'
-           'border-radius:999px;padding:.1rem .9rem;font-size:clamp(.9rem,1.2vw,1.3rem)">🧪 리허설</div>')
+        md('<div style="position:fixed;top:.6vh;right:2.4vw;z-index:999;font-family:\'Noto Serif KR\',serif;font-weight:600;color:#3A1F17;background:#D6B676;'
+           'border-radius:999px;padding:.1rem .9rem;font-size:clamp(.85rem,1.1vw,1.2rem)">🧪 리허설</div>')
+    if mode != "play":
+        md(garland_svg())
     if mode == "intro":
+        md(f'<div class="sc-sleigh">{_SLEIGH}</div><div class="sc-tree">{tree_svg("tr")}</div>')
         md(intro_html(int(scr["g"]), S))
     elif mode == "end":
         md(vote_screen_html(S))
