@@ -646,10 +646,7 @@ def form_area(g: int):
     w_text(g, d, "pitch", "발표 한마디 (기획 의도·관전 포인트)", area=True, height=80, max_chars=300)
     md(f'<div class="mx mx-note">수정 요청은 영상이 나온 뒤 <b>[수정 요청·문의]</b>에서 최대 {store.MAX_REV}번 보낼 수 있어요.</div>')
 
-    md('<div style="height:.6rem"></div>')
-    if st.button("🔄 다른 휴대폰에서 쓴 내용 불러오기", key=f"reload_{g}", use_container_width=True):
-        _bump(g)
-        st.rerun(scope="fragment")
+    md('<div class="mx mx-note" style="font-size:.85rem;opacity:.85">한 분임에서 두 사람이 따로 썼다면, 화면을 새로 고치면 서로 쓴 내용이 합쳐져 보여요.</div>')
     miss = store.missing(store.get_request(g)["data"])
     if R["status"] == "submitted":
         md('<div class="mx mx-warn" style="border-style:solid;border-color:#1f3f8f;background:#eef3ff">✅ 제출 완료! 제작이 시작되기 전까지 고치는 내용도 자동으로 관리팀에 보여요.</div>')
