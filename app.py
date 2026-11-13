@@ -726,12 +726,27 @@ def vote_view():
         return
     who = st.session_state.get("vote_who")
     if not who:
-        md('<div class="mx mx-sec"><i>1</i>내 이름</div>')
+        free = not store.roster_total()          # 명단이 없으면: 이름 + 우리 분임을 직접 고름
+        md('<div class="mx mx-sec"><i>1</i>' + ("내 이름과 우리 분임" if free else "내 이름") + '</div>')
         with st.form("vote_name"):
             nm = st.text_input("내 이름", max_chars=20, placeholder="예: 김민수")
+            my_g = (st.radio("우리 분임 (이 분임 작품은 투표 목록에서 빠져요)", list(range(1, store.N_GROUPS + 1)) + [0], index=None, key="vote_myg",
+                             horizontal=True, format_func=lambda x: S["names"][x - 1] if x else "분임 없음(국장님 등)") if free else None)
             ok = st.form_submit_button("다음 →", type="primary", use_container_width=True)
-        md('<div class="mx mx-note">분임 명단에 등록된 이름 그대로 써 주세요(띄어쓰기는 상관없어요). 명단에 없다고 나오면 운영팀에 말해 주세요.</div>')
-        if ok:
+        md('<div class="mx mx-note">' + ("본인 이름을 정확히 써 주세요. 같은 이름으로는 한 번만 투표할 수 있어요." if free else
+                                         "분임 명단에 등록된 이름 그대로 써 주세요(띄어쓰기는 상관없어요). 명단에 없다고 나오면 운영팀에 말해 주세요.") + "</div>")
+        if ok and free:
+            nm2 = " ".join(str(nm or "").split())
+            if len(store.name_key(nm2)) < 2:
+                st.error("이름을 두 글자 이상 써 주세요.")
+            elif my_g is None:
+                st.error("우리 분임을 골라 주세요.")
+            elif store.has_voted(nm2):
+                st.error("이미 투표한 이름이에요. 동명이인이면 '김민수B'처럼 구분해서 써 주세요.")
+            else:
+                st.session_state["vote_who"] = [nm2, int(my_g)]
+                st.rerun()
+        elif ok:
             found = store.find_voter(nm)
             if not found:
                 st.error("명단에 없는 이름이에요. 이름을 다시 확인해 주세요.")
@@ -757,7 +772,7 @@ def vote_view():
         if ok:
             if pick is None:
                 st.error("작품을 하나 골라 주세요.")
-            elif act(store.cast_vote, name, int(pick)):
+            elif act(store.cast_vote, name, int(pick), vg):
                 st.session_state["vote_done"] = name
                 st.session_state.pop("vote_who", None)
                 st.rerun()
@@ -825,7 +840,7 @@ def rehearsal_panel():
     if reh:
         st.info(f"지금 리허설 데이터가 들어 있어요({kst(reh.get('at'))} 채움" + (", 연습 명단 사용 중" if reh.get("roster") else ", 등록한 명단 그대로") + ").")
     default_roster = (not total) or bool(reh.get("roster"))
-    roster_too = st.checkbox("투표 명단도 연습 명단으로 채우기 (연습1-1 ~ 연습7-5, 연습국장)", value=default_roster, key="rh_roster")
+    roster_too = st.checkbox("투표 명단도 연습 명단으로 채우기 (연습1-1 ~ 연습7-8, 연습국장 · 끄면 자유 입력으로 연습)", value=default_roster, key="rh_roster")
     if total and not reh.get("roster"):
         md(f'<div class="mx mx-note">지금 등록된 명단 {total}명이 있어요. <b>체크를 끄면</b> 그 명단으로 투표 연습을 하고(리허설 뒤에도 명단은 남음), '
            '<b>체크하면</b> 연습 명단으로 바뀌고 리허설을 끝낼 때 지워집니다(그때는 명단을 다시 등록해야 해요).</div>')
@@ -941,12 +956,12 @@ def vote_live():
     tally = store.vote_tally()
     rows = []
     for g in list(range(1, store.N_GROUPS + 1)) + [0]:
-        if g == 0 and not roster[0]:
+        if g == 0 and not roster[0] and not done.get(0):
             continue
-        rows.append(f'<tr><td><b>{ESC(_glabel(g, S))}</b></td><td>{done.get(g, 0)} / {len(roster[g])}명</td>'
+        rows.append(f'<tr><td><b>{ESC(_glabel(g, S))}</b></td><td>{done.get(g, 0)}' + (f' / {len(roster[g])}명' if any(roster.values()) else '명') + '</td>'
                     f'<td>{"" if g == 0 else str(tally[g]) + "표"}</td></tr>')
     md(f'<div class="mx mx-top" style="margin:.3rem 0 .5rem"><span class="mx-badge" style="color:{fg};background:{bg}">{t}</span>'
-       f'<div class="mx-h1" style="font-size:1.6rem">참여 {len(vs)} / {sum(len(v) for v in roster.values())}명</div></div>')
+       f'<div class="mx-h1" style="font-size:1.6rem">참여 {len(vs)}' + (f' / {store.roster_total()}명' if store.roster_total() else '명') + '</div></div>')
     md('<table class="mx mx-tbl"><tr><th>분임</th><th>투표한 사람</th><th>받은 표</th></tr>' + "".join(rows) + "</table>")
     st.caption(f"5초마다 자동으로 새로 고칩니다 · {kst(time.time(), '%H:%M:%S')} 기준 · 누가 누구를 골랐는지는 저장만 하고 보여 주지 않습니다")
 
@@ -958,15 +973,17 @@ def vote_panel():
     roster = store.get_roster()
     total = sum(len(v) for v in roster.values())
     md('<div class="mx mx-note">각자 휴대폰으로 <b>' + ESC(base_url() or "앱주소") + '/?view=vote</b>에 들어와 <b>내 이름</b>을 쓰고, '
-       '<b>우리 분임을 뺀 작품 중 한 편</b>을 고릅니다(1인 1표). 이름은 아래 <b>명단</b>에 있어야 하고, 같은 이름으로 두 번은 못 합니다.<br>'
+       '<b>우리 분임을 뺀 작품 중 한 편</b>을 고릅니다(1인 1표). 같은 이름으로 두 번은 못 합니다.<br>'
+       '· <b>명단을 비워 두면(자유 입력)</b>: 이름과 <b>우리 분임</b>을 각자 직접 고릅니다 — 현장에서 자리를 자유롭게 앉을 때.<br>'
+       '· <b>명단을 넣으면</b>: 명단에 있는 이름만 투표할 수 있고, 분임은 명단대로 정해집니다.<br>'
        '스크린 투표 화면에 QR이 크게 나옵니다. 시사회 탭에서 마지막 영상 뒤 [▶ 다음]을 누르면 투표 화면이 뜨면서 투표가 자동으로 열립니다.</div>')
     if not total:
-        st.warning("아직 명단이 없습니다. 아래 [분임 명단 등록]에서 먼저 등록해 주세요.")
+        st.info("지금은 명단이 비어 있어서 '자유 입력' 투표예요. 각자 이름과 우리 분임을 직접 골라요.")
     vote_live()
     with st.container(key="row_vt_ctl"):
         c1, c2 = st.columns(2)
         if c1.button("🗳 투표 열기 + 스크린에 QR" if stt != "closed" else "🗳 투표 다시 열기 + 스크린에 QR", key="vt_open",
-                     use_container_width=True, disabled=stt == "open" or not total):
+                     use_container_width=True, disabled=stt == "open"):
             store.set_vote_state("open")
             _go({"mode": "end"})
         if c2.button("⏹ 투표 마감", key="vt_close", use_container_width=True, disabled=stt != "open"):
@@ -998,7 +1015,7 @@ def vote_panel():
             store.save_settings(awards=aw.strip())
             st.rerun()
 
-    md('<div class="mx mx-sec">분임 명단 등록 <span style="font-size:1rem;color:#6a5a45">투표 전에 · 한 줄에 한 명</span></div>')
+    md('<div class="mx mx-sec">분임 명단 등록 <span style="font-size:1rem;color:#CDB8A6">선택 · 비워 두면 자유 입력 · 한 줄에 한 명</span></div>')
     md('<div class="mx mx-note">명단에 있는 이름으로만 투표할 수 있고, 그 사람의 분임 작품은 투표 목록에서 빠집니다. 띄어쓰기는 상관없어요.<br>'
        '같은 이름(동명이인)이 있으면 저장되지 않으니 <b>김민수A, 김민수B</b>처럼 구분하고, 본인에게도 그렇게 쓰라고 알려 주세요.</div>')
     with st.form("vt_roster"):

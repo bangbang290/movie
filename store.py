@@ -733,10 +733,23 @@ def has_voted(name: str) -> bool:
         c.close()
 
 
-def cast_vote(name: str, g: int) -> str:
-    who = find_voter(name)
-    if not who:
-        raise StoreError("명단에 없는 이름이에요. 분임에 등록된 이름 그대로 써 주세요.")
+def roster_total() -> int:
+    return sum(len(v) for v in get_roster().values())
+
+
+def cast_vote(name: str, g: int, voter_g: int | None = None) -> str:
+    """투표. 명단이 있으면 명단의 이름만(분임은 명단대로), 명단이 비어 있으면 '자유 입력'(이름 + 직접 고른 우리 분임)."""
+    if roster_total():
+        who = find_voter(name)
+        if not who:
+            raise StoreError("명단에 없는 이름이에요. 분임에 등록된 이름 그대로 써 주세요.")
+    else:
+        disp = re.sub(r"\s+", " ", str(name or "")).strip()[:20]
+        if len(name_key(disp)) < 2:
+            raise StoreError("이름을 두 글자 이상 써 주세요.")
+        if voter_g is None or not 0 <= int(voter_g) <= N_GROUPS:
+            raise StoreError("우리 분임을 골라 주세요.")
+        who = (disp, int(voter_g))
     disp, vg = who
     if g == vg:
         raise StoreError("우리 분임 작품에는 투표할 수 없어요.")
@@ -975,8 +988,8 @@ REHEARSAL_PLANS = [
 
 
 def rehearsal_roster() -> dict[int, list[str]]:
-    """연습 명단: 분임마다 '연습3-1' ~ '연습3-5', 분임 없음은 '연습국장'."""
-    r = {g: [f"연습{g}-{i}" for i in range(1, 6)] for g in range(1, N_GROUPS + 1)}
+    """연습 명단: 분임마다 '연습3-1' ~ '연습3-8', 분임 없음은 '연습국장'."""
+    r = {g: [f"연습{g}-{i}" for i in range(1, 9)] for g in range(1, N_GROUPS + 1)}
     r[0] = ["연습국장"]
     return r
 
