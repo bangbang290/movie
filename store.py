@@ -144,7 +144,8 @@ def default_settings() -> dict:
         "notice": "★ 칸만 채우면 돼요. 20분 안에 쓰고 맨 아래 [제출하기]를 눌러 주세요.",
         "public_url": "",
         "order": "",          # 시사회 상영 순서(예: "3,1,2"). 비우면 1분임부터
-        "awards": "최우수상,우수상,장려상",   # 투표 1위·2위·3위 상 이름
+        "awards": "최우수상",   # 투표 1위 상 이름(1위 한 팀만 시상)
+        "bgm": "https://www.youtube.com/watch?v=52p4L7f3DZQ",   # 관리 화면 배경음악(유튜브)
     }
 
 
@@ -639,6 +640,7 @@ def board_token() -> str:
 #   명단: kv "roster" = {"0": [분임 없이 투표하는 사람], "1": [1분임 명단], …}
 #   상태: kv "vote" = {"state": ready(아직) | open(투표 중) | closed(마감)}   표: vote 테이블(이름당 1줄)
 VOTE_STATES = ("ready", "open", "closed")
+AWARD_TOP = 1          # 시상할 순위 수(1 = 최우수 한 팀만)
 
 
 def name_key(name: str) -> str:
@@ -799,10 +801,10 @@ def ranking(S: dict | None = None) -> list[dict]:
 
 
 def award_steps(S: dict | None = None) -> list[dict]:
-    """결과 발표 순서(3위 → 2위 → 1위). 표를 받은 분임만, 같은 순위는 함께. [{rank, award, groups:[{g, votes}]}]"""
+    """결과 발표 단계: 1위(최우수상) 한 팀만. 표가 같으면 공동 1위로 함께. [{rank, award, groups:[{g, votes}]}]"""
     S = S or get_settings()
     names = [a.strip() for a in str(S.get("awards") or "").split(",")]
-    top = [x for x in ranking(S) if x["votes"] > 0 and x["rank"] <= 3]
+    top = [x for x in ranking(S) if x["votes"] > 0 and x["rank"] <= AWARD_TOP]
     return [{"rank": r, "award": (names[r - 1] if r - 1 < len(names) and names[r - 1] else f"{r}위"),
              "groups": [x for x in top if x["rank"] == r]} for r in sorted({x["rank"] for x in top}, reverse=True)]
 

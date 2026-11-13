@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import html
 import os
+import random
+import re
 import time
 
 import streamlit as st
@@ -168,6 +170,20 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 .sc-podium .gt{font-size:clamp(1rem,1.5vw,1.6rem);margin-top:.5vh;word-break:keep-all}
 .sc-podium .gv{font-family:"Noto Serif KR",serif;font-weight:600;font-size:clamp(1.1rem,1.8vw,2rem);margin-top:.8vh;color:#6B1F2C}
 .sc-podium .q{font-family:"Cormorant Garamond",serif;font-size:clamp(3rem,7vw,7.5rem);line-height:1}
+.sc-podium .pd.p1{flex:0 1 44vw}
+.sc-podium .pd.hide .q{animation:pl 1s ease-in-out infinite}
+.sc-podium .pd.win{animation:pop .9s cubic-bezier(.2,1.4,.4,1) both,glow 2.4s ease-in-out .9s infinite}
+.sc-podium .pd.win .gn{font-size:clamp(2.4rem,4.6vw,5rem)}
+@keyframes pop{0%{transform:scale(.4) rotate(-4deg);opacity:0}100%{transform:scale(1) rotate(0);opacity:1}}
+@keyframes glow{0%,100%{box-shadow:inset 0 0 0 6px #D6B676,inset 0 0 0 7px #6B1F2C,0 0 0 0 rgba(246,215,122,0)}50%{box-shadow:inset 0 0 0 6px #D6B676,inset 0 0 0 7px #6B1F2C,0 0 8vh 2vh rgba(246,215,122,.55)}}
+.sc-intro .ttl.shine{color:#F6E3A8;animation:shine 1.8s ease-in-out infinite}
+@keyframes shine{50%{text-shadow:0 0 3.5vh rgba(246,215,122,.9);transform:scale(1.04)}}
+.sc-confetti{position:fixed;inset:0;pointer-events:none;z-index:5;overflow:hidden}
+.sc-confetti i{position:absolute;top:-6vh;display:block;width:.8vw;height:1.7vh;border-radius:1px;opacity:.95;animation-name:cf;animation-timing-function:linear;animation-iteration-count:infinite}
+.sc-confetti i.r{width:1vw;height:1vw;border-radius:50%}
+@keyframes cf{0%{transform:translate3d(0,0,0) rotate(0)}100%{transform:translate3d(var(--dx),115vh,0) rotate(var(--rot))}}
+@media (prefers-reduced-motion: reduce){.sc-confetti{display:none}.sc-podium .pd.win,.sc-intro .ttl.shine{animation:none}}
+[data-testid="stAudio"]{position:fixed!important;left:-9999px!important;width:1px!important}
 </style>"""
 
 
@@ -797,6 +813,7 @@ def admin_view():
         return
     S = store.get_settings()
     md(f'<div class="mx mx-h1">{ESC(S["event"])} · 영상 의뢰 관리</div>')
+    bgm_player(S)
     if not secret("admin_pin"):
         st.error("Streamlit 설정(Secrets)에 admin_pin 이 없어서 관리 화면 PIN이 임시로 0000입니다. "
                  "배포 화면의 Settings → Secrets에 admin_pin = \"7391\" 처럼 관리팀만 아는 숫자를 넣어 주세요.")
@@ -860,6 +877,19 @@ def rehearsal_panel():
         had_roster = bool(reh.get("roster"))
         store.reset_all()
         st.success("모두 지웠습니다. 이제 실제 행사를 시작할 수 있어요." + (" 연습 명단이 지워졌으니 [🗳 투표] 탭에서 실제 명단을 등록해 주세요." if had_roster else ""))
+
+
+def bgm_player(S: dict):
+    """관리 화면 맨 위 배경음악(유튜브). 다른 탭을 눌러도 이 자리는 그대로라 계속 재생됩니다."""
+    m = re.search(r"(?:v=|youtu\.be/|shorts/|embed/)([\w-]{11})", S.get("bgm") or "")
+    if not m:
+        return
+    with st.container(key="row_bgm"):
+        c1, c2 = st.columns([1.2, 3], vertical_alignment="center")
+        with c1:
+            st.video(f"https://www.youtube.com/watch?v={m.group(1)}")
+        c2.markdown('<div class="mx mx-note">🎵 <b>배경음악</b> — ▶을 누르면 나와요. 다른 탭을 눌러도 계속 나오고, 이 창을 새로 고치거나 닫으면 멈춰요. '
+                    '음악은 [⚙️ 설정]에서 바꾸거나 지울 수 있어요.</div>', unsafe_allow_html=True)
 
 
 # ───────────────────────── 시사회 진행
@@ -996,11 +1026,11 @@ def vote_panel():
     if n < 0:
         lab = "🏆 결과 발표 화면 띄우기 (두구두구)"
     elif n < len(steps):
-        lab = f"🏆 다음 공개: {steps[n]['award']} ({steps[n]['rank']}위)"
+        lab = f"🎉 {steps[n]['award']} 공개! (축하 음악)"
     else:
-        lab = "🏆 모두 공개했습니다"
-    md('<div class="mx mx-note">투표를 <b>마감한 뒤</b> 누르세요. 누를 때마다 <b>3위 → 2위 → 1위</b> 순서로 하나씩 공개됩니다. '
-       '표가 같으면 공동 순위로 함께 나옵니다.</div>')
+        lab = "🏆 공개했습니다"
+    md('<div class="mx mx-note">투표를 <b>마감한 뒤</b> 누르세요. 처음 누르면 스크린에 <b>두구두구…</b> 화면이 뜨고, 한 번 더 누르면 '
+       '<b>최우수 분임</b>이 캐럴 축하 음악·꽃가루와 함께 공개됩니다(스크린 화면을 한 번 클릭해 둬야 소리가 나요). 표가 같으면 공동 1위로 함께 나옵니다.</div>')
     if st.button(lab, key="vt_reveal", type="primary", use_container_width=True, disabled=stt != "closed" or not steps or n >= len(steps)):
         _go({"mode": "result", "n": n + 1})
     if scr["mode"] == "result" and st.button("↺ 결과 화면 처음부터", key="vt_reveal0", use_container_width=True):
@@ -1010,7 +1040,7 @@ def vote_panel():
         md('<div class="mx mx-note">' + "<br>".join(f'{x["rank"]}위 · <b>{ESC(S["names"][x["g"] - 1])}</b> {ESC(_title(x["g"]))} · {x["votes"]}표'
                                                  for x in rk) + "</div>")
     with st.form("vt_awards"):
-        aw = st.text_input("상 이름 (1위, 2위, 3위 순서로 쉼표)", S["awards"], max_chars=60)
+        aw = st.text_input("상 이름 (1위 한 팀)", S["awards"].split(",")[0], max_chars=30)
         if st.form_submit_button("상 이름 저장"):
             store.save_settings(awards=aw.strip())
             st.rerun()
@@ -1253,8 +1283,9 @@ def settings_panel():
         names = [cols[i % 4].text_input(f"{i + 1}번 분임 이름", S["names"][i], max_chars=16) for i in range(store.N_GROUPS)]
         notice = st.text_area("분임 화면 안내 문구", S["notice"], max_chars=200, help="예: 기획서 제출 마감 11/12(목) 18시")
         url = st.text_input("앱 주소 (QR 카드에 들어감)", S["public_url"], placeholder="https://….streamlit.app")
+        bgm = st.text_input("관리 화면 배경음악 (유튜브 주소, 비우면 안 나옴)", S.get("bgm", ""), placeholder="https://www.youtube.com/watch?v=…")
         if st.form_submit_button("저장", type="primary"):
-            store.save_settings(event=ev.strip() or "워크숍", names=names, notice=notice, public_url=url.strip().rstrip("/"))
+            store.save_settings(event=ev.strip() or "워크숍", names=names, notice=notice, public_url=url.strip().rstrip("/"), bgm=bgm.strip())
             st.success("저장했습니다.")
             st.rerun()
 
@@ -1318,28 +1349,39 @@ def vote_screen_html(S: dict) -> str:
             f'우리 분임을 뺀 <b>한 편</b>을 골라 주세요</div>{count}<div class="url">{ESC(url)}</div></div></div></div>')
 
 
+CELEBRATE = os.path.join(store.BASE, "celebrate.mp3")    # 최우수 공개 때 나오는 축하 음악(썰매 방울 + 종소리 Jingle Bells)
+_CONF_COLORS = ["#F5C542", "#D8394A", "#2FA35F", "#F4EAD5", "#D6B676", "#6EC6FF", "#FF9BD2"]
+
+
+def confetti_html(n: int = 90) -> str:
+    """꽃가루(종이 조각·동그라미)가 위에서 쉬지 않고 떨어지는 층."""
+    r = random.Random(2026)
+    bits = []
+    for k in range(n):
+        shape = ' class="r"' if k % 4 == 0 else ""
+        bits.append(f'<i{shape} style="left:{r.uniform(0, 100):.1f}%;background:{_CONF_COLORS[k % len(_CONF_COLORS)]};'
+                    f'animation-duration:{r.uniform(3.2, 6.5):.2f}s;animation-delay:-{r.uniform(0, 6):.2f}s;'
+                    f'--dx:{r.uniform(-8, 8):.1f}vw;--rot:{r.choice([-1, 1]) * r.randint(360, 1080)}deg"></i>')
+    return '<div class="sc-confetti" aria-hidden="true">' + "".join(bits) + "</div>"
+
+
 def result_html(S: dict, n: int) -> str:
-    """결과 발표: 시상대(2위·1위·3위) 칸을 두고, 3위부터 하나씩 공개."""
+    """결과 발표: 최우수(1위) 한 팀. 처음엔 '두구두구…'로 가리고, 한 번 더 누르면 꽃가루·축하 음악과 함께 공개."""
     steps = store.award_steps(S)
     if not steps:
         return f'<div class="sc-intro"><div class="ev">{ESC(S["event"])}</div><div class="ttl">아직 표가 없어요</div></div>'
-    n = min(max(n, 0), len(steps))
-    shown = {s["rank"] for s in steps[:n]}
-    by_rank = sorted(steps, key=lambda s: s["rank"])
-    slots = [by_rank[1], by_rank[0], by_rank[2]] if len(by_rank) == 3 else [by_rank[1], by_rank[0]] if len(by_rank) == 2 else by_rank
-    cards = []
-    for s in slots:
-        p1 = " p1" if s is by_rank[0] else ""
-        if s["rank"] in shown:
-            body = "".join(f'<div class="gn">{ESC(S["names"][x["g"] - 1])}</div><div class="gt">{ESC(_title(x["g"]))}</div>'
-                           f'<div class="gv">{x["votes"]}표</div>' for x in s["groups"])
-            tie = " 공동" if len(s["groups"]) > 1 else ""
-            cards.append(f'<div class="pd{p1}"><div class="aw">{ESC(s["award"])}</div><div class="rk">{tie} {s["rank"]}위</div>{body}</div>')
-        else:
-            cards.append(f'<div class="pd hide{p1}"><div class="aw">{ESC(s["award"])}</div><div class="q">?</div></div>')
-    head = "축하합니다!" if n >= len(steps) else "두구두구…" if n == 0 else "투표 결과"
-    return (f'<div class="sc-intro wide"><div class="ev" style="max-width:60vw">{ESC(S["event"])} · 투표 결과 발표</div>'
-            f'<div class="ttl" style="font-size:clamp(2.6rem,5.4vw,5.8rem)">{head}</div><div class="sc-podium">{"".join(cards)}</div></div>')
+    s = steps[0]
+    if n < len(steps):
+        card = f'<div class="pd hide p1"><div class="aw">{ESC(s["award"])}</div><div class="q">?</div></div>'
+        head, extra, cls = "두구두구…", "", ""
+    else:
+        body = "".join(f'<div class="gn">{ESC(S["names"][x["g"] - 1])}</div><div class="gt">{ESC(_title(x["g"]))}</div>'
+                       f'<div class="gv">{x["votes"]}표</div>' for x in s["groups"])
+        tie = "공동 " if len(s["groups"]) > 1 else ""
+        card = (f'<div class="pd p1 win"><div class="aw">🏆 {ESC(s["award"])}</div><div class="rk">{tie}1위</div>{body}</div>')
+        head, extra, cls = "축하합니다!", confetti_html(), " shine"
+    return (extra + f'<div class="sc-intro wide"><div class="ev" style="max-width:60vw">{ESC(S["event"])} · 투표 결과 발표</div>'
+            f'<div class="ttl{cls}" style="font-size:clamp(2.6rem,5.4vw,5.8rem)">{head}</div><div class="sc-podium">{card}</div></div>')
 
 
 def screen_view():
@@ -1365,6 +1407,9 @@ def screen_view():
         md(vote_screen_html(S))
     elif mode == "result":
         md(result_html(S, scr["n"]))
+        steps = store.award_steps(S)
+        if steps and scr["n"] >= len(steps) and os.path.exists(CELEBRATE):
+            st.audio(CELEBRATE, format="audio/mpeg", autoplay=True)      # 최우수 공개: 캐럴 축하 음악(한 번)
     elif r:
         R = store.get_request(r["g"])
         md(f'<div class="sc-head"><b>{ESC(S["names"][r["g"] - 1])}</b><span>{ESC(R["data"]["title"] or R["data"]["topic"])}</span></div>')
