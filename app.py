@@ -183,7 +183,7 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 .sc-confetti i.r{width:1vw;height:1vw;border-radius:50%}
 @keyframes cf{0%{transform:translate3d(0,0,0) rotate(0)}100%{transform:translate3d(var(--dx),115vh,0) rotate(var(--rot))}}
 @media (prefers-reduced-motion: reduce){.sc-confetti{display:none}.sc-podium .pd.win,.sc-intro .ttl.shine{animation:none}}
-[data-testid="stAudio"]{position:fixed!important;left:-9999px!important;width:1px!important}
+[data-testid="stAudio"],.st-key-aud_roll,.st-key-aud_win{position:fixed!important;left:-9999px!important;width:1px!important}
 </style>"""
 
 
@@ -1029,8 +1029,8 @@ def vote_panel():
         lab = f"🎉 {steps[n]['award']} 공개! (축하 음악)"
     else:
         lab = "🏆 공개했습니다"
-    md('<div class="mx mx-note">투표를 <b>마감한 뒤</b> 누르세요. 처음 누르면 스크린에 <b>두구두구…</b> 화면이 뜨고, 한 번 더 누르면 '
-       '<b>최우수 분임</b>이 캐럴 축하 음악·꽃가루와 함께 공개됩니다(스크린 화면을 한 번 클릭해 둬야 소리가 나요). 표가 같으면 공동 1위로 함께 나옵니다.</div>')
+    md('<div class="mx mx-note">투표를 <b>마감한 뒤</b> 누르세요. 처음 누르면 스크린에 <b>두구두구…</b> 화면과 <b>드럼롤</b>이 계속 울리고, 분위기가 오르면 한 번 더 눌러 '
+       '<b>최우수 분임</b>을 공개하세요. 심벌 “짠!”과 함께 캐럴·꽃가루가 터집니다(스크린 화면을 한 번 클릭해 둬야 소리가 나요). 표가 같으면 공동 1위로 함께 나옵니다.</div>')
     if st.button(lab, key="vt_reveal", type="primary", use_container_width=True, disabled=stt != "closed" or not steps or n >= len(steps)):
         _go({"mode": "result", "n": n + 1})
     if scr["mode"] == "result" and st.button("↺ 결과 화면 처음부터", key="vt_reveal0", use_container_width=True):
@@ -1349,7 +1349,8 @@ def vote_screen_html(S: dict) -> str:
             f'우리 분임을 뺀 <b>한 편</b>을 골라 주세요</div>{count}<div class="url">{ESC(url)}</div></div></div></div>')
 
 
-CELEBRATE = os.path.join(store.BASE, "celebrate.mp3")    # 최우수 공개 때 나오는 축하 음악(썰매 방울 + 종소리 Jingle Bells)
+DRUMROLL = os.path.join(store.BASE, "drumroll.mp3")      # 결과 발표 두구두구 화면에서 반복되는 드럼롤
+CELEBRATE = os.path.join(store.BASE, "celebrate.mp3")    # 최우수 공개 때 나오는 축하 음악(심벌 '짠!' + 밴드 버전 Jingle Bells)
 _CONF_COLORS = ["#F5C542", "#D8394A", "#2FA35F", "#F4EAD5", "#D6B676", "#6EC6FF", "#FF9BD2"]
 
 
@@ -1408,8 +1409,13 @@ def screen_view():
     elif mode == "result":
         md(result_html(S, scr["n"]))
         steps = store.award_steps(S)
-        if steps and scr["n"] >= len(steps) and os.path.exists(CELEBRATE):
-            st.audio(CELEBRATE, format="audio/mpeg", autoplay=True)      # 최우수 공개: 캐럴 축하 음악(한 번)
+        if steps and scr["n"] >= len(steps):
+            if os.path.exists(CELEBRATE):
+                with st.container(key="aud_win"):
+                    st.audio(CELEBRATE, format="audio/mpeg", autoplay=True)      # 최우수 공개: 짠! + 캐럴 축하 음악(한 번)
+        elif steps and os.path.exists(DRUMROLL):
+            with st.container(key="aud_roll"):
+                st.audio(DRUMROLL, format="audio/mpeg", autoplay=True, loop=True)  # 두구두구: 공개 버튼 누를 때까지 드럼롤 반복
     elif r:
         R = store.get_request(r["g"])
         md(f'<div class="sc-head"><b>{ESC(S["names"][r["g"] - 1])}</b><span>{ESC(R["data"]["title"] or R["data"]["topic"])}</span></div>')
