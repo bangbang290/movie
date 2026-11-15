@@ -11,6 +11,7 @@ import hashlib
 import io
 import json
 import os
+import random
 import re
 import shutil
 import sqlite3
@@ -530,8 +531,8 @@ def pending_revisions(g: int) -> list[dict]:
 
 # ───────────────────────── 스크린(프로젝터)에 틀 것
 #   mode: board(대기 판) · intro(분임 소개 화면, g) · play(영상 상영, rid·g) · end(투표 화면: QR·참여 수)
-#         · result(투표 결과 발표, n = 지금까지 공개한 순위 수) · deck(발표 자료, n = 지금 보여 주는 장)
-SCREEN_MODES = ("board", "intro", "play", "end", "result", "deck")
+#         · result(투표 결과 발표, n = 지금까지 공개한 순위 수) · deck(발표 자료, n = 지금 보여 주는 장) · sort(마법의 분임 배정식)
+SCREEN_MODES = ("board", "intro", "play", "end", "result", "deck", "sort")
 
 
 def _norm_screen(s: dict | None) -> dict:
@@ -630,11 +631,26 @@ def board_token() -> str:
         v = c.execute("SELECT COUNT(*) n FROM vote").fetchone()["n"]
         vs = (_kv_get(c, "vote", {}) or {}).get("state")
         ro = _kv_get(c, "roster", {}) or {}
+        tm = _kv_get(c, "teams", {}) or {}
     finally:
         c.close()
+    tm = {k: tm.get(k) for k in ("seq", "show_at", "show_mode")}
     return hashlib.md5(f"{a}|{b['n']}|{b['m']}|{s.get('rid')}|{s.get('at')}|{json.dumps(n, ensure_ascii=False)}|{v}|{vs}|"
-                       f"{json.dumps(ro, ensure_ascii=False)}".encode()).hexdigest()
+                       f"{json.dumps(ro, ensure_ascii=False)}|{json.dumps(tm, ensure_ascii=False)}".encode()).hexdigest()
 
+
+
+def sort_token() -> str:
+    """배정식 화면용: 스크린 상태·배정·분임 이름이 바뀔 때만 다시 그림(기획서를 고쳐도 배정식이 처음부터 다시 시작하지 않게)."""
+    c = _connect()
+    try:
+        s = _kv_get(c, "screen", {}) or {}
+        t = _kv_get(c, "teams", {}) or {}
+        n = _kv_get(c, "settings", {}) or {}
+    finally:
+        c.close()
+    t = {k: t.get(k) for k in ("seq", "show_at", "show_mode")}
+    return hashlib.md5(json.dumps([s, t, n], ensure_ascii=False, sort_keys=True, default=str).encode()).hexdigest()
 
 # ───────────────────────── 투표 (1인 1표 · 내 이름으로 · 우리 분임 작품은 빼고)
 #   명단: kv "roster" = {"0": [분임 없이 투표하는 사람], "1": [1분임 명단], …}
@@ -818,6 +834,227 @@ def reset_votes():
             _kv_put(c, "screen", {"mode": "board", "rid": None, "g": None, "n": 0, "at": time.time()})
 
 
+# ───────────────────────── 팀 배정 (마법의 분임 배정식)
+#   kv "team_people" = ["이름", …]   붙여 넣은 참가자 명단(모두 지우기에도 남김)
+#   kv "teams" = {"groups": {"1": [이름…], …}, "seq": [[이름, 분임], …(스크린에서 깃발로 날아가는 순서)],
+#                 "seed": n, "at": 배정 시각, "show_at": 스크린 배정식 시작(ms) | 0, "show_mode": idle | play | final,
+#                 "hist": [이전 배정 {groups, seq, seed, at} …(최대 5개, 되돌리기용)]}
+#   배정하면 투표 명단(roster)도 같이 바뀜(분임 없이 투표하는 사람 칸은 그대로).
+_RANK = re.compile(r"^((관세|행정|전산|공업|기술|운전|사무)?\s*\d+\s*급(\s*\(.*\))?|직급|직위|성명|이름|순번|번호|소속|부서|비고|no\.?|\d+[.)]?|"
+                   r"주무관|사무관|서기관|계장|과장|팀장|국장|실장|반장|서기|서기보|주사|주사보)$", re.I)
+
+
+def parse_people(text: str) -> list[str]:
+    """명단 칸 → 이름 목록. 줄·쉼표·탭으로 나눔(엑셀 여러 칸을 통째로 붙여 넣어도 됨). '6급'·'성명' 같은 칸은 뺌.
+    한글 이름 사이 띄어쓰기('양 현')는 붙여서 '양현'. 같은 이름이 두 번이면 알려 줌."""
+    out: list[str] = []
+    seen: dict[str, str] = {}
+    dup: list[str] = []
+    for t in re.split(r"[\n\t,，、;]+", str(text or "")):
+        t = t.strip()
+        if not t or _RANK.match(t):
+            continue
+        t = re.sub(r"\s+", "", t) if re.fullmatch(r"[가-힣\s]+", t) else re.sub(r"\s+", " ", t)
+        t = t[:20]
+        k = name_key(t)
+        if k in seen:
+            dup.append(t)
+            continue
+        seen[k] = t
+        out.append(t)
+    if dup:
+        raise StoreError("같은 이름이 있어요: " + ", ".join(dict.fromkeys(dup)) + " → '김민수A', '김민수B'처럼 구분해서 다시 저장해 주세요.")
+    return out
+
+
+def team_people() -> list[str]:
+    c = _connect()
+    try:
+        return [str(x) for x in (_kv_get(c, "team_people", []) or [])]
+    finally:
+        c.close()
+
+
+def save_team_people(text: str) -> int:
+    people = parse_people(text)
+    with _tx() as c:
+        _kv_put(c, "team_people", people)
+    return len(people)
+
+
+def _team_norm(t: dict | None) -> dict:
+    t = dict(t or {})
+    groups = {g: [str(n) for n in (t.get("groups") or {}).get(str(g), [])] for g in range(1, N_GROUPS + 1)}
+    seq = [[str(n), int(g)] for n, g in (t.get("seq") or []) if 1 <= int(g) <= N_GROUPS]
+    mode = t.get("show_mode") if t.get("show_mode") in ("idle", "play", "final") else "idle"
+    return {"groups": groups if seq else {}, "seq": seq, "seed": t.get("seed"), "at": t.get("at") or 0,
+            "show_at": int(t.get("show_at") or 0), "show_mode": mode, "hist": list(t.get("hist") or [])[-5:]}
+
+
+def team_get() -> dict:
+    c = _connect()
+    try:
+        return _team_norm(_kv_get(c, "teams", {}))
+    finally:
+        c.close()
+
+
+def _team_roster_sync(c, groups: dict):
+    """배정 결과를 투표 명단으로(분임 없이 투표하는 사람 칸은 남기되, 배정된 이름과 겹치면 뺌)."""
+    ro = _kv_get(c, "roster", {}) or {}
+    assigned = {name_key(n) for g in groups.values() for n in g}
+    zero = [n for n in ro.get("0", []) if name_key(n) not in assigned]
+    _kv_put(c, "roster", {"0": zero, **{str(g): list(groups.get(g, [])) for g in range(1, N_GROUPS + 1)}})
+
+
+def _team_save(c, t: dict, push: dict | None = None):
+    if push and push.get("seq"):
+        t["hist"] = (list(t.get("hist") or []) + [{k: push[k] for k in ("groups", "seq", "seed", "at")}])[-5:]
+    _kv_put(c, "teams", {"groups": {str(g): v for g, v in t["groups"].items()}, "seq": t["seq"], "seed": t.get("seed"),
+                         "at": t.get("at") or time.time(), "show_at": t.get("show_at") or 0, "show_mode": t.get("show_mode") or "idle",
+                         "hist": t.get("hist") or []})
+    if t["seq"]:
+        _team_roster_sync(c, t["groups"])
+
+
+def team_assign(seed: int | None = None, people: list[str] | None = None) -> dict:
+    """참가자를 N_GROUPS개 분임에 무작위로 고르게 나눔(인원 차이는 많아야 1명).
+    남는 인원이 어느 분임에 갈지도 무작위. 스크린에서 날아가는 순서도 무작위."""
+    people = list(people if people is not None else team_people())
+    if len(people) < N_GROUPS:
+        raise StoreError(f"명단이 {N_GROUPS}명보다 적어요. 먼저 참가자 명단을 저장해 주세요.")
+    if seed is None:
+        seed = random.SystemRandom().randrange(1, 2 ** 31)
+    rnd = random.Random(seed)
+    order = people[:]
+    rnd.shuffle(order)
+    gorder = list(range(1, N_GROUPS + 1))
+    rnd.shuffle(gorder)
+    gof = {n: gorder[i % N_GROUPS] for i, n in enumerate(order)}
+    seq = order[:]
+    rnd.shuffle(seq)
+    groups = {g: [n for n in seq if gof[n] == g] for g in range(1, N_GROUPS + 1)}
+    with _tx() as c:
+        old = _team_norm(_kv_get(c, "teams", {}))
+        t = dict(old, groups=groups, seq=[[n, gof[n]] for n in seq], seed=seed, at=time.time(), show_at=0, show_mode="idle")
+        _team_save(c, t, push=old)      # 스크린이 배정식 중이면 새 배정의 '시작 전' 화면으로 바뀜
+    return team_get()
+
+
+def team_undo() -> bool:
+    with _tx() as c:
+        t = _team_norm(_kv_get(c, "teams", {}))
+        if not t["hist"]:
+            return False
+        prev = t["hist"].pop()
+        t.update(groups={int(g): v for g, v in prev["groups"].items()}, seq=prev["seq"], seed=prev.get("seed"), at=prev.get("at"),
+                 show_at=0, show_mode="idle")
+        _team_save(c, t)
+    return True
+
+
+def team_clear():
+    """배정만 지움(참가자 명단은 남김). 투표 명단에서도 배정된 분임 칸을 비움."""
+    with _tx() as c:
+        t = _team_norm(_kv_get(c, "teams", {}))
+        if t["seq"]:
+            ro = _kv_get(c, "roster", {}) or {}
+            _kv_put(c, "roster", {"0": ro.get("0", [])})
+        c.execute("DELETE FROM kv WHERE k='teams'")
+        if (_kv_get(c, "screen", {}) or {}).get("mode") == "sort":
+            _kv_put(c, "screen", {"mode": "board", "rid": None, "g": None, "n": 0, "at": time.time()})
+
+
+def team_find(name: str) -> int | None:
+    k = name_key(name)
+    if not k:
+        return None
+    for n, g in team_get()["seq"]:
+        if name_key(n) == k:
+            return g
+    return None
+
+
+def team_add(name: str) -> int:
+    """늦게 온 사람: 인원이 가장 적은 분임에(같으면 무작위). 참가자 명단에도 더함."""
+    n = (parse_people(name) or [""])[0]
+    if not n:
+        raise StoreError("이름을 넣어 주세요.")
+    with _tx() as c:
+        t = _team_norm(_kv_get(c, "teams", {}))
+        if not t["seq"]:
+            raise StoreError("아직 배정 전이에요. 먼저 무작위 배정을 해 주세요.")
+        if any(name_key(x) == name_key(n) for x, _g in t["seq"]):
+            raise StoreError(f"'{n}'은(는) 이미 배정돼 있어요.")
+        ro = _kv_get(c, "roster", {}) or {}
+        if any(name_key(x) == name_key(n) for x in ro.get("0", [])):
+            raise StoreError(f"'{n}'은(는) '분임 없이 투표하는 사람'에 있어요. 거기서 빼고 다시 넣어 주세요.")
+        sizes = {g: len(t["groups"].get(g, [])) for g in range(1, N_GROUPS + 1)}
+        low = min(sizes.values())
+        g = random.choice([g for g, v in sizes.items() if v == low])
+        t["groups"][g] = t["groups"].get(g, []) + [n]
+        t["seq"].append([n, g])
+        _team_save(c, t)
+        people = [str(x) for x in (_kv_get(c, "team_people", []) or [])]
+        if all(name_key(x) != name_key(n) for x in people):
+            _kv_put(c, "team_people", people + [n])
+    return g
+
+
+def team_remove(name: str) -> int | None:
+    """빠진 사람을 배정에서 뺌(참가자 명단에서도). 뺀 분임 번호를 돌려줌."""
+    k = name_key(name)
+    with _tx() as c:
+        t = _team_norm(_kv_get(c, "teams", {}))
+        hit = next((g for n, g in t["seq"] if name_key(n) == k), None)
+        if hit is None:
+            return None
+        t["seq"] = [[n, g] for n, g in t["seq"] if name_key(n) != k]
+        t["groups"] = {g: [n for n in v if name_key(n) != k] for g, v in t["groups"].items()}
+        _team_save(c, t)
+        people = [str(x) for x in (_kv_get(c, "team_people", []) or [])]
+        _kv_put(c, "team_people", [x for x in people if name_key(x) != k])
+    return hit
+
+
+def team_rename(old: str, new: str) -> int:
+    """이름 오타 고치기(분임은 그대로)."""
+    new_n = (parse_people(new) or [""])[0]
+    if not new_n:
+        raise StoreError("새 이름을 넣어 주세요.")
+    ko, kn = name_key(old), name_key(new_n)
+    with _tx() as c:
+        t = _team_norm(_kv_get(c, "teams", {}))
+        hit = next((g for n, g in t["seq"] if name_key(n) == ko), None)
+        if hit is None:
+            raise StoreError(f"'{old}'을(를) 찾지 못했어요.")
+        if kn != ko and any(name_key(n) == kn for n, _g in t["seq"]):
+            raise StoreError(f"'{new_n}'은(는) 이미 있어요.")
+        t["seq"] = [[new_n if name_key(n) == ko else n, g] for n, g in t["seq"]]
+        t["groups"] = {g: [new_n if name_key(n) == ko else n for n in v] for g, v in t["groups"].items()}
+        _team_save(c, t)
+        people = [str(x) for x in (_kv_get(c, "team_people", []) or [])]
+        _kv_put(c, "team_people", [new_n if name_key(x) == ko else x for x in people])
+    return hit
+
+
+def team_show(mode: str = "play"):
+    """스크린에 배정식: idle(시작 전 무대) · play(지금 시작) · final(결과만)."""
+    if mode not in ("idle", "play", "final"):
+        mode = "idle"
+    with _tx() as c:
+        t = _team_norm(_kv_get(c, "teams", {}))
+        if mode != "idle" and not t["seq"]:
+            raise StoreError("아직 배정 전이에요. 먼저 무작위 배정을 해 주세요.")
+        t["show_mode"] = mode
+        t["show_at"] = int(time.time() * 1000)
+        if t["seq"] or t["groups"]:
+            _team_save(c, t)
+        else:
+            _kv_put(c, "teams", {"groups": {}, "seq": [], "show_at": t["show_at"], "show_mode": mode, "hist": t["hist"]})
+        _kv_put(c, "screen", {"mode": "sort", "rid": None, "g": None, "n": 0, "at": time.time()})
+
+
 # ───────────────────────── Claude에게 보낼 요청문
 def _eul(word: str) -> str:
     """받침이 있으면 '을', 없으면 '를'."""
@@ -885,6 +1122,8 @@ def backup() -> str:
             "roster": _kv_get(c, "roster", {}) or {},
             "vote": _kv_get(c, "vote", {}) or {},
             "votes": [dict(r) for r in c.execute("SELECT * FROM vote ORDER BY at")],
+            "team_people": _kv_get(c, "team_people", []) or [],
+            "teams": _kv_get(c, "teams", {}) or {},
         }
     finally:
         c.close()
@@ -920,6 +1159,10 @@ def restore(raw: str | bytes) -> int:
             _kv_put(c, "roster", b["roster"])
         if b.get("vote"):
             _kv_put(c, "vote", b["vote"])
+        if b.get("team_people"):     # 팀 배정(참가자 명단·배정 결과)도 그대로
+            _kv_put(c, "team_people", [str(x) for x in b["team_people"]])
+        if b.get("teams"):
+            _kv_put(c, "teams", b["teams"])
         if "votes" in b:
             c.execute("DELETE FROM vote")
             for v in b["votes"]:
@@ -950,6 +1193,9 @@ def reset_all():
         c.execute("DELETE FROM vote")          # 투표 명단(roster)은 설정처럼 남김(리허설용 연습 명단이면 같이 지움)
         if (_kv_get(c, "rehearsal", {}) or {}).get("roster"):
             c.execute("DELETE FROM kv WHERE k='roster'")
+            tm = _team_norm(_kv_get(c, "teams", {}))
+            if tm["seq"]:                       # 팀 배정이 있으면 투표 명단을 배정대로 되돌림
+                _team_roster_sync(c, tm["groups"])
         c.execute("DELETE FROM kv WHERE k IN ('screen', 'vote', 'rehearsal')")
         for g in range(1, N_GROUPS + 1):
             c.execute("UPDATE req SET data=?, status='draft', submitted_at=NULL, updated_at=? WHERE g=?",

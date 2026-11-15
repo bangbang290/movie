@@ -3,8 +3,8 @@
   /                 분임 화면(휴대폰): 분임 고르기 → 비밀번호(처음엔 분임이 직접 만듦) → 기획서 쓰기·제출 → 결과물 보기·수정 요청
   /                 행사 공통 QR → 분임 고르기 → 비밀번호
   /?g=3             (선택) 분임별 QR 카드로 바로 들어오는 주소(그 분임 비밀번호 화면)
-  /?view=admin      관리팀(노트북, PIN): 진행 현황 · Claude 요청문 복사 · 결과물 올리기 · 비밀번호 초기화/QR · 백업
-  /?view=screen     스크린(프로젝터): 관리팀이 고른 결과물을 크게 틀기 · 시사회(분임 소개 화면 → 영상 → 다음 분임) · 투표 QR · 결과 발표
+  /?view=admin      관리팀(노트북, PIN): 진행 현황 · 팀 배정 · Claude 요청문 복사 · 결과물 올리기 · 비밀번호 초기화/QR · 백업
+  /?view=screen     스크린(프로젝터): 마법의 분임 배정식 · 발표 자료 · 결과물 크게 틀기 · 시사회(분임 소개 → 영상 → 다음 분임) · 투표 QR · 결과 발표
   /?view=vote       투표(각자 휴대폰): 내 이름 → 우리 분임을 뺀 작품 중 한 편 (1인 1표, 명단은 관리팀이 미리 등록)
 """
 from __future__ import annotations
@@ -101,6 +101,12 @@ ADMIN_CSS = """<style>
 .mx-tbl th,.mx-tbl td{padding:.5rem .6rem;border-bottom:1px solid #E2D2B0;text-align:left;vertical-align:middle}
 .mx-tbl th{background:#4F1520;color:#F4EAD5;font-weight:500;font-family:"Noto Serif KR",serif;font-size:1rem}
 .mx-tbl .new{color:#fff;background:#C22D45;border-radius:999px;padding:0 .5rem;font-size:.85rem}
+.tm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:.6rem;margin:.4rem 0 .9rem}
+.tm-card{background:#F4EAD5;color:#3A1F17;border-radius:4px;padding:.5rem .75rem .7rem;font-family:"Noto Sans KR","Malgun Gothic",sans-serif}
+.tm-h{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #E2D2B0;padding-bottom:.3rem;margin-bottom:.35rem}
+.tm-h b{font-family:"Noto Serif KR",serif;font-weight:600;font-size:1.05rem}
+.tm-h span{font-size:.85rem;color:#7A5A3C}
+.tm-n{font-size:.98rem;line-height:1.6}
 </style>"""
 
 SCREEN_CSS = """<style>
@@ -218,6 +224,7 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 .st-key-deck_nav button{min-height:2.4rem;padding:.2rem .6rem;background:rgba(20,20,24,.78)!important;color:#fff!important;border:1px solid rgba(255,255,255,.35)!important;border-radius:8px}
 .sc-deckno{position:fixed;left:1.4vw;bottom:1.8vh;z-index:60;font:600 clamp(.8rem,1vw,1.05rem) "Noto Sans KR",sans-serif;color:#fff;opacity:.35;pointer-events:none}
 [data-testid="stAudio"],.st-key-aud_roll,.st-key-aud_win{position:fixed!important;left:-9999px!important;width:1px!important}
+.st-key-sort_view iframe{position:fixed!important;left:0;top:0;width:100vw!important;height:100vh!important;border:0!important;z-index:50;background:#07061A}
 </style>"""
 
 
@@ -470,6 +477,7 @@ def home_view():
                     if col.button(S["names"][g - 1], key=f"pick_{g}", use_container_width=True):
                         st.session_state["pick"] = g
                         st.rerun()
+        find_my_group(S)
         md('<div class="mx mx-foot">Merry Christmas &amp; Happy New Year</div>')
         return
     md(f'<div class="mx mx-hero"><div class="mx-orn">WINTER PREMIERE</div>'
@@ -505,6 +513,33 @@ def home_view():
         st.session_state.pop("pick", None)
         st.query_params.clear()
         st.rerun()
+
+
+def find_my_group(S: dict):
+    """배정식으로 분임을 나눈 뒤: 이름을 넣으면 내 분임을 알려 줌(배정식을 스크린에 공개한 뒤에만 보임)."""
+    T = store.team_get()
+    if not T["seq"] or T["show_mode"] not in ("play", "final"):
+        return
+    md('<div class="mx mx-orn sub">내 분임을 모르겠다면</div>')
+    with st.form("find_me"):
+        nm = st.text_input("🔮 이름을 넣으면 우리 분임을 알려 드려요", max_chars=20, placeholder="예: 홍길동")
+        ok = st.form_submit_button("내 분임 찾기", use_container_width=True)
+    if ok:
+        if store.team_find(nm):
+            st.session_state["found"] = re.sub(r"\s+", "", nm)
+        else:
+            st.session_state.pop("found", None)
+            st.error("명단에 없는 이름이에요. 띄어쓰기 없이 다시 써 보거나 관리팀에 알려 주세요.")
+    f = st.session_state.get("found")
+    g = store.team_find(f) if f else None          # 매번 다시 찾음(관리팀이 다시 섞어도 맞게)
+    if g:
+        gn = S["names"][g - 1]
+        md(f'<div class="mx mx-card" style="text-align:center"><div class="mx-note">{ESC(f)}님의 분임</div>'
+           f'<div class="mx-h1">{ESC(gn)}</div><div class="mx-note">아래 버튼이나 위의 {ESC(gn)} 표를 눌러 들어가세요</div></div>')
+        if st.button(f"🎟 {gn} 들어가기", key="found_go", type="primary", use_container_width=True):
+            st.session_state["pick"] = g
+            st.session_state.pop("found", None)
+            st.rerun()
 
 
 def enter(g: int, tok: str):
@@ -854,24 +889,26 @@ def admin_view():
     reh = store.rehearsal_info()
     if reh:
         st.warning(f"🧪 리허설 데이터가 들어 있어요({kst(reh.get('at'))} 채움). 행사 전에 꼭 [🧪 리허설] 탭에서 [리허설 끝: 모두 지우기]를 눌러 주세요.")
-    tabs = st.tabs(["📋 진행 현황", "📽 발표", "🎞 시사회", "🗳 투표", "🔑 분임 비밀번호·QR", "⚙️ 설정", "💾 백업·초기화", "🧪 리허설"])
+    tabs = st.tabs(["📋 진행 현황", "🪄 팀 배정", "📽 발표", "🎞 시사회", "🗳 투표", "🔑 분임 비밀번호·QR", "⚙️ 설정", "💾 백업·초기화", "🧪 리허설"])
     with tabs[0]:
         overview()
         md("<hr>")
         detail()
     with tabs[1]:
-        deck_panel()
+        team_panel()
     with tabs[2]:
-        premiere_panel()
+        deck_panel()
     with tabs[3]:
-        vote_panel()
+        premiere_panel()
     with tabs[4]:
-        pw_panel()
+        vote_panel()
     with tabs[5]:
-        settings_panel()
+        pw_panel()
     with tabs[6]:
-        backup_panel()
+        settings_panel()
     with tabs[7]:
+        backup_panel()
+    with tabs[8]:
         rehearsal_panel()
 
 
@@ -928,6 +965,186 @@ def bgm_player(S: dict):
                     '음악은 [⚙️ 설정]에서 바꾸거나 지울 수 있어요.</div>', unsafe_allow_html=True)
 
 
+# ───────────────────────── 팀 배정(마법의 분임 배정식)
+SORT_COLORS = ["#A8323E", "#2C5AA0", "#1E7356", "#6B3FA0", "#B7791F", "#1B7480", "#A84476"]   # 1~7분임 깃발 색
+SORT_MODES = {"idle": "분임 배정식 · 🔮 준비 화면(시작 전)", "play": "분임 배정식 · 🪄 진행", "final": "분임 배정식 · ✅ 결과"}
+
+
+def sort_secs(n: int) -> float:
+    """배정식 길이(초): 스크린 그림(SORT_HTML)의 일정표와 같은 계산(이름이 다 꽂힐 때까지)."""
+    calls, tc, end = min(4, n), 7.6, 7.6
+    for k in range(n):
+        end = max(end, tc + (.5 if k < calls else 0) + .82)
+        tc += 1.3 if k < calls else max(.2, .72 * .85 ** (k - calls))
+    return end + .6
+
+
+def team_grid_html(S: dict, T: dict) -> str:
+    cards = []
+    for g in range(1, store.N_GROUPS + 1):
+        ns = sorted(T["groups"].get(g, []))
+        cards.append(f'<div class="tm-card" style="border-top:6px solid {SORT_COLORS[(g - 1) % len(SORT_COLORS)]}">'
+                     f'<div class="tm-h"><b>{ESC(S["names"][g - 1])}</b><span>{len(ns)}명</span></div>'
+                     f'<div class="tm-n">{"<br>".join(ESC(n) for n in ns) or "-"}</div></div>')
+    return '<div class="tm-grid">' + "".join(cards) + "</div>"
+
+
+def _tm_done(msg: str):
+    st.session_state["tm_msg"] = msg
+    st.rerun()
+
+
+def team_panel():
+    S = store.get_settings()
+    T = store.team_get()
+    people = store.team_people()
+    scr = store.screen_get()
+    on = scr["mode"] == "sort"
+    has = bool(T["seq"])
+    url = base_url() or "앱주소"
+    md('<div class="mx mx-note">참가자 <b>이름만</b> 넣으면 순서를 무작위로 섞어 <b>7개 분임</b>(인원 차이 최대 1명)으로 나누고, '
+       f'스크린({ESC(url)}/?view=screen)에서 <b>마법의 분임 배정식</b>으로 공개합니다. 이름이 마법진 소용돌이에 섞였다가 분임 깃발로 하나씩 날아가 꽂혀요.<br>'
+       '배정하면 <b>투표 명단</b>도 이 배정대로 바뀌고(내 분임 작품에는 투표 못 함), 맨 아래 <b>🌙 저녁 세션</b> 칸에서 분임별 명단을 복사해 '
+       '오락실 앱에 붙이면 저녁에도 같은 팀으로 진행됩니다.</div>')
+    msg = st.session_state.pop("tm_msg", None)
+    if msg:
+        st.success(msg)
+
+    # ① 참가자 명단
+    md(f'<div class="mx mx-sec"><i>1</i>참가자 명단 <span style="font-size:1rem;color:#CDB8A6">{len(people)}명 저장됨</span></div>')
+    with st.form("tm_people"):
+        txt = st.text_area("한 줄에 한 명 · 엑셀에서 이름 칸을 통째로 복사해 붙여도 돼요(‘6급’·‘성명’ 같은 칸은 저절로 빠지고, ‘양 현’처럼 띄어 쓴 이름은 붙여서 저장)",
+                           "\n".join(people), height=240)
+        if st.form_submit_button("👥 참가자 명단 저장", type="primary", use_container_width=True):
+            try:
+                n = store.save_team_people(txt)
+                _tm_done(f"참가자 {n}명을 저장했습니다." + (" 이미 나눈 배정과 다르면 아래 안내를 보고 다시 섞거나 한 명씩 넣고 빼 주세요." if has else ""))
+            except store.StoreError as e:
+                st.error(str(e))
+    if has:
+        done = {store.name_key(n) for n, _g in T["seq"]}
+        pk = {store.name_key(n) for n in people}
+        new = [n for n in people if store.name_key(n) not in done]
+        gone = [n for n, _g in T["seq"] if store.name_key(n) not in pk]
+        if new or gone:
+            st.warning("참가자 명단과 지금 배정이 달라요. " + (f"배정 안 된 사람: {', '.join(new)}. " if new else "")
+                       + (f"명단에서 빠진 사람: {', '.join(gone)}. " if gone else "")
+                       + "② [🔀 다시 섞기]로 새로 나누거나, [✏️ 현장 변경]에서 한 명씩 넣고 빼 주세요.")
+
+    # ② 무작위로 나누기
+    md('<div class="mx mx-sec"><i>2</i>무작위로 나누기</div>')
+    if not has:
+        md('<div class="mx mx-note">누가 어느 분임이 될지는 <b>컴퓨터가 무작위로</b> 정하고, 남는 인원이 어느 분임에 갈지도 무작위예요. '
+           '결과는 여기서 먼저 볼 수 있고, 스크린에는 ③에서 배정식을 시작할 때 공개됩니다. '
+           '<b>미리 보지 않고</b> 모두와 함께 보고 싶으면 이 버튼 없이 ③의 [🪄 배정식 시작!]을 바로 누르세요(그때 자동으로 나눔).</div>')
+        if st.button(f"🪄 무작위로 7개 분임 나누기 ({len(people)}명)", key="tm_assign", type="primary", use_container_width=True,
+                     disabled=len(people) < store.N_GROUPS):
+            if act(store.team_assign):
+                _tm_done("나눴습니다. 결과를 확인하고 ③에서 스크린 배정식을 시작하세요.")
+    else:
+        sizes = [len(T["groups"].get(g, [])) for g in range(1, store.N_GROUPS + 1)]
+        md(f'<div class="mx mx-card"><div class="mx-note">배정 완료 · {kst(T["at"])}'
+           + (" · 스크린에 공개함" if T["show_mode"] in ("play", "final") else " · 아직 스크린에 공개 전") + '</div>'
+           f'<div class="mx-h1" style="font-size:1.4rem">{sum(sizes)}명 → ' + "·".join(str(x) for x in sizes) + "명</div></div>")
+        with st.expander("배정 결과 보기 (관리팀만 · 스크린에는 배정식 때 공개)", expanded=T["show_mode"] in ("play", "final")):
+            md(team_grid_html(S, T))
+        shown = T["show_mode"] in ("play", "final")
+        voted = len(store.voters())
+        with st.container(key="row_tm_ctl"):
+            c1, c2 = st.columns(2)
+            with c1:
+                if shown or voted:
+                    warn = ("이미 스크린에 공개한 배정을 버리고 새로 섞습니다. " if shown else "") + \
+                           (f"이미 {voted}명이 투표했어요(그 표는 예전 분임 기준으로 남음). " if voted else "") + "새 배정은 스크린 '준비 화면'으로 돌아갑니다."
+                    if confirm_button("🔀 다시 섞기", "tm_shuffle", warn) and act(store.team_assign):
+                        _tm_done("새로 섞었습니다. ③에서 배정식을 다시 시작하세요.")
+                elif st.button("🔀 다시 섞기", key="tm_shuffle_now", use_container_width=True):
+                    if act(store.team_assign):
+                        _tm_done("새로 섞었습니다.")
+            with c2:
+                if st.button("↩ 되돌리기 (바로 전 배정)", key="tm_undo", use_container_width=True, disabled=not T["hist"]):
+                    if store.team_undo():
+                        _tm_done("바로 전 배정으로 되돌렸습니다.")
+
+    # ③ 스크린에서 배정식
+    md('<div class="mx mx-sec"><i>3</i>스크린에서 배정식</div>')
+    secs = round(sort_secs(len(T["seq"]) or len(people)))
+    now_lab = SORT_MODES.get(T["show_mode"], "분임 배정식") if on else _step_label(scr, S)
+    if on and T["show_mode"] == "play" and T["show_at"] and time.time() - T["show_at"] / 1000 > sort_secs(len(T["seq"])) + 1:
+        now_lab = "분임 배정식 · ✅ 끝남(결과 화면)"
+    md(f'<div class="mx mx-card"><div class="mx-note">지금 스크린</div><div class="mx-h1" style="font-size:1.5rem">📺 {ESC(now_lab)}</div></div>')
+    md('<div class="mx mx-note">순서: <b>[🔮 준비 화면]</b>을 띄워 두고 진행자가 안내 → <b>[🪄 배정식 시작!]</b> '
+       f'(약 {secs}초 · 효과음) → 끝나면 결과가 그대로 남아요. 모두 깃발에서 내 이름을 찾아 분임 자리로!<br>'
+       '· 스크린 PC 화면을 <b>미리 한 번 클릭</b>해 두면 효과음이 나요(안 나면 스크린 오른쪽 아래 <b>🔈 소리 켜기</b>).<br>'
+       '· 스크린을 새로 고쳐도 끝났으면 결과가, 하는 중이면 그 자리부터 이어서 나와요. 다른 화면으로 넘어가려면 [⏹ 대기 판으로] 또는 다른 탭 버튼.</div>')
+    with st.container(key="row_tm_scr1"):
+        c1, c2 = st.columns(2)
+        if c1.button("🔮 준비 화면 띄우기", key="tm_idle", use_container_width=True, disabled=on and T["show_mode"] == "idle"):
+            if act(store.team_show, "idle"):
+                st.rerun()
+        playing = on and T["show_mode"] == "play"
+        if c2.button("🪄 배정식 처음부터 다시" if playing else "🪄 배정식 시작!", key="tm_play", type="primary", use_container_width=True,
+                     disabled=not has and len(people) < store.N_GROUPS):
+            if (has or act(store.team_assign)) and act(store.team_show, "play"):
+                st.rerun()
+    with st.container(key="row_tm_scr2"):
+        c1, c2 = st.columns(2)
+        if c1.button("⏭ 결과만 바로 보기", key="tm_final", use_container_width=True, disabled=not has or (on and T["show_mode"] == "final")):
+            if act(store.team_show, "final"):
+                st.rerun()
+        if c2.button("⏹ 대기 판으로", key="tm_off", use_container_width=True, disabled=not on):
+            _go({"mode": "board"})
+    if not has:
+        return
+
+    # ④ 현장 변경
+    with st.expander("✏️ 현장 변경 · 늦게 온 사람 / 빠진 사람 / 이름 오타"):
+        md('<div class="mx mx-note">바꾸면 배정·투표 명단·스크린 결과 화면에 바로 반영돼요. 늦게 온 사람은 <b>인원이 가장 적은 분임</b>에 들어갑니다(같으면 무작위).</div>')
+        with st.form("tm_add", clear_on_submit=True):
+            nm = st.text_input("늦게 온 사람 이름", max_chars=20)
+            if st.form_submit_button("➕ 넣기", use_container_width=True):
+                try:
+                    g = store.team_add(nm)
+                    _tm_done(f"{nm.strip()} → {S['names'][g - 1]}에 넣었습니다.")
+                except store.StoreError as e:
+                    st.error(str(e))
+        names = sorted(n for n, _g in T["seq"])
+        c1, c2 = st.columns(2)
+        with c1:
+            rm = st.selectbox("빠진 사람", ["(고르기)"] + names)
+            if rm != "(고르기)" and confirm_button("➖ 배정에서 빼기", "tm_rm", f"{rm} 님을 배정과 투표 명단에서 뺍니다."):
+                g = store.team_remove(rm)
+                _tm_done(f"{rm} 님을 {S['names'][g - 1]}에서 뺐습니다." if g else "이미 빠져 있어요.")
+        with c2:
+            with st.form("tm_rename", clear_on_submit=True):
+                old = st.selectbox("이름 고칠 사람", names)
+                new = st.text_input("바른 이름", max_chars=20)
+                if st.form_submit_button("이름 고치기", use_container_width=True):
+                    try:
+                        store.team_rename(old, new)
+                        _tm_done(f"{old} → {new.strip()}(으)로 고쳤습니다.")
+                    except store.StoreError as e:
+                        st.error(str(e))
+
+    # ⑤ 저녁 세션(오락실)
+    md('<div class="mx mx-sec">🌙 저녁 세션(오락실)에 같은 팀 넣기</div>')
+    md('<div class="mx mx-note">오락실 앱 운영 화면 → <b>[01 · 팀명 / 구호]</b> → 각 분임 칸의 <b>[팀원 명단 (선택)]</b>을 열고, '
+       '아래 상자 오른쪽 위 <b>복사</b> 버튼으로 복사해 <b>같은 번호</b> 분임 칸에 붙여 넣기 → 7개 다 넣은 뒤 <b>[팀 정보 저장]</b>. '
+       '(오락실 앱도 1분임~7분임 순서 그대로예요)</div>')
+    cols = st.columns(4)
+    for i, g in enumerate(range(1, store.N_GROUPS + 1)):
+        with cols[i % 4]:
+            ns = sorted(T["groups"].get(g, []))
+            st.caption(f"{g}분임 · {S['names'][g - 1]} · {len(ns)}명" if S["names"][g - 1] != f"{g}분임" else f"{g}분임 · {len(ns)}명")
+            st.code("\n".join(ns) or " ", language=None)
+    with st.expander("📋 전체 명단 한 번에 복사 (단톡방 공지용)"):
+        st.code("\n".join(f"[{S['names'][g - 1]}] " + ", ".join(sorted(T["groups"].get(g, []))) for g in range(1, store.N_GROUPS + 1)), language=None)
+    md("<hr>")
+    if confirm_button("🧹 배정 지우기 (연습한 뒤에)", "tm_clear", "배정과 투표 명단의 1~7분임 칸을 지웁니다. 참가자 명단은 남아요."):
+        store.team_clear()
+        _tm_done("배정을 지웠습니다.")
+
+
 # ───────────────────────── 시사회 진행
 def _step_label(step: dict, S: dict) -> str:
     m, g = step["mode"], step.get("g")
@@ -941,6 +1158,8 @@ def _step_label(step: dict, S: dict) -> str:
         return "투표 결과 발표 화면"
     if m == "deck":
         return "발표 자료"
+    if m == "sort":
+        return "분임 배정식"
     return "대기 판"
 
 
@@ -1148,6 +1367,9 @@ def vote_panel():
     md('<div class="mx mx-sec">분임 명단 등록 <span style="font-size:1rem;color:#CDB8A6">선택 · 비워 두면 자유 입력 · 한 줄에 한 명</span></div>')
     md('<div class="mx mx-note">명단에 있는 이름으로만 투표할 수 있고, 그 사람의 분임 작품은 투표 목록에서 빠집니다. 띄어쓰기는 상관없어요.<br>'
        '같은 이름(동명이인)이 있으면 저장되지 않으니 <b>김민수A, 김민수B</b>처럼 구분하고, 본인에게도 그렇게 쓰라고 알려 주세요.</div>')
+    if store.team_get()["seq"]:
+        md('<div class="mx mx-warn">🪄 <b>[팀 배정]</b> 결과가 아래 1~7분임 명단에 자동으로 들어가 있어요. 여기서 고치면 투표 명단만 바뀌고 배정(스크린·저녁 세션 명단)은 그대로예요. '
+           '사람을 넣거나 뺄 때는 [🪄 팀 배정] 탭의 <b>[✏️ 현장 변경]</b>을 쓰면 둘 다 바뀝니다.</div>')
     with st.form("vt_roster"):
         cols = st.columns(2)
         texts = {}
@@ -1406,7 +1628,7 @@ def backup_panel():
         st.download_button(f"⬇ 결과물 묶음 내려받기 ({size_txt(len(st.session_state['zip']))})", st.session_state["zip"],
                            file_name=f"분임_영상_{kst(time.time(), '%m%d')}.zip", mime="application/zip", use_container_width=True)
     md("<hr>")
-    if confirm_button("🧹 모두 지우고 처음부터 (리허설 뒤에)", "reset", "모든 기획서·자료·결과물·대화·투표와 분임 비밀번호를 지웁니다. 설정(분임 이름 등)과 투표 명단은 남습니다."):
+    if confirm_button("🧹 모두 지우고 처음부터 (리허설 뒤에)", "reset", "모든 기획서·자료·결과물·대화·투표와 분임 비밀번호를 지웁니다. 설정(분임 이름 등)·팀 배정·투표 명단은 남습니다."):
         store.reset_all()
         st.success("초기화했습니다.")
 
@@ -1536,6 +1758,536 @@ def deck_screen(n: int):
     md(f'<div class="sc-deckno">{x.get("slide", n + 1)} / {steps[-1].get("slide", len(steps))}</div>')
 
 
+def sort_html(S: dict, T: dict) -> str:
+    """배정식 그림에 넣을 값: 분임 이름·색, 날아가는 순서, 화면 단계, 시작한 뒤 지난 초(서버 시계)."""
+    since = max(0.0, time.time() - T["show_at"] / 1000) if T["show_at"] else 0.0
+    data = {"event": S["event"], "title": "마법의 분임 배정식",
+            "groups": [{"label": S["names"][i], "color": SORT_COLORS[i % len(SORT_COLORS)]} for i in range(store.N_GROUPS)],
+            "seq": [] if T["show_mode"] == "idle" else [[n, g - 1] for n, g in T["seq"]],      # 준비 화면엔 이름을 안 실음(미리 안 보이게)
+            "mode": T["show_mode"], "since": round(since, 2)}
+    return SORT_HTML.replace("__DATA__", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
+
+
+def sort_screen(S: dict):
+    """마법의 분임 배정식: 화면 가득(캔버스 그림 + 효과음). 끝나면 결과 화면이 그대로 남음."""
+    md('<style>.stApp{background:#07061A!important}.stApp::before,.stApp::after{display:none!important}.block-container{padding:0!important}</style>')
+    try:
+        from streamlit.components.v1 import html as _html
+    except Exception:
+        md('<div class="sc-intro"><div class="ttl">분임 배정식</div></div>')
+        return
+    with st.container(key="sort_view"):
+        _html(sort_html(S, store.team_get()), height=640)
+
+
+# 배정식 그림(1920×1080 캔버스): 이름이 떠오름 → 마법진 소용돌이에 섞임 → 처음 4명은 가운데서 크게 호명 → 분임 깃발로 날아가 꽂힘 → 배정 완료
+# 효과음은 브라우저에서 직접 만듦(WebAudio). __DATA__ 자리에 sort_html()이 값을 넣음.
+SORT_HTML = r"""<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,600&family=Noto+Serif+KR:wght@600;900&family=Noto+Sans+KR:wght@500;700&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;height:100%;background:#07061A;overflow:hidden}
+#wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#07061A}
+canvas{display:block}
+#snd{position:fixed;right:14px;bottom:12px;font:500 14px "Noto Sans KR","Noto Sans CJK KR",sans-serif;color:#D6B676;background:rgba(20,14,40,.75);border:1px solid rgba(214,182,118,.5);border-radius:999px;padding:6px 14px;cursor:pointer;display:none}
+</style></head>
+<body><div id="wrap"><canvas id="c" width="1920" height="1080"></canvas></div><div id="snd">🔈 소리 켜기</div>
+<script>
+/* 마법의 분임 배정식 — 이름이 마법진 소용돌이에 섞였다가 분임 깃발로 날아가 꽂힘.
+   DATA = {event, title, groups:[{label, color}], seq:[[이름, 분임 index], …(나가는 순서)], mode:'idle'|'play'|'final',
+           since: 관리팀이 [배정식 시작]을 누른 뒤 지난 초(서버 시계로 잼 — 스크린 PC 시계가 틀려도 괜찮게)} */
+const DATA = __DATA__;
+const W = 1920, H = 1080;
+const IDLE = DATA.mode === 'idle';
+let AMB = 0;                                   // 배경(별·촛불·마법진 회전)은 늘 흐르는 시계
+const cv = document.getElementById('c'); let ctx = cv.getContext('2d');
+const SERIF = '"Noto Serif KR","Noto Serif CJK KR","Nanum Myeongjo",serif';
+const SANS = '"Noto Sans KR","Noto Sans CJK KR",sans-serif';
+const ITAL = '"Cormorant Garamond","Playfair Display",serif';
+const GOLD = '#E9C77B', IVORY = '#FFF4D6';
+
+function fit() {
+  const s = Math.min(innerWidth / W, innerHeight / H);
+  cv.style.width = (W * s) + 'px'; cv.style.height = (H * s) + 'px';
+}
+addEventListener('resize', fit); fit();
+
+/* ── 난수·보간 ── */
+function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const eOut = t => 1 - Math.pow(1 - t, 3);
+const eIO = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const eBack = t => { const s = 1.7; return t <= 0 ? 0 : 1 + (s + 1) * Math.pow(t - 1, 3) + s * Math.pow(t - 1, 2); };
+function bez(p0, p1, p2, p3, t) { const u = 1 - t; return [u*u*u*p0[0] + 3*u*u*t*p1[0] + 3*u*t*t*p2[0] + t*t*t*p3[0], u*u*u*p0[1] + 3*u*u*t*p1[1] + 3*u*t*t*p2[1] + t*t*t*p3[1]]; }
+
+/* ── 일정표 ── */
+const seq = DATA.seq || [], N = seq.length, G = Math.max(1, (DATA.groups || []).length);
+const T_APPEAR0 = .9, T_APPEAR1 = 2.6, T_SWIRL = 3.1, T_VORTEX = 7.0, T_SORT = 7.6, CALL = .5, FLY = .82;
+const CALLS = Math.min(4, N);
+const exits = [], lands = [], slot = [], cnt = new Array(G).fill(0);
+{ let tc = T_SORT;
+  for (let k = 0; k < N; k++) {
+    exits.push(tc);
+    lands.push(tc + (k < CALLS ? CALL : 0) + FLY);
+    slot.push(cnt[seq[k][1]]++);
+    tc += k < CALLS ? 1.3 : Math.max(.2, .72 * Math.pow(.85, k - CALLS));
+  } }
+const T_FIN = (N ? Math.max(...lands) : T_SORT) + .6;
+const MAXPER = Math.max(1, ...cnt);
+
+/* ── 깃발 배치 ── */
+const BX0 = 56, BWT = 1808, GAP = 16, BW = (BWT - GAP * (G - 1)) / G;
+const ROD = 594, BTOP = 600, BBOT = 1070, STOP = 728, SBOT = 1030;
+const COLS = MAXPER > 11 ? 2 : 1;
+const ROWS = Math.ceil(MAXPER / COLS);
+const SLH = Math.min(42, (SBOT - STOP) / ROWS);
+const NFS = Math.min(30, SLH * .74) * (COLS === 2 ? .92 : 1);
+function slotXY(g, s) {
+  const bx = BX0 + g * (BW + GAP);
+  const col = COLS === 2 ? (s % 2) : 0, row = COLS === 2 ? Math.floor(s / 2) : s;
+  const x = COLS === 2 ? bx + BW * (col ? .75 : .25) : bx + BW / 2;
+  return [x, STOP + SLH * (row + .5)];
+}
+
+/* ── 소용돌이 ── */
+const CF = [960, 488];                 // 마법진(바닥) 중심
+const R = rng(20261127);
+const P = seq.map((x, i) => ({
+  name: x[0], g: x[1],
+  p0: [lerp(150, 1770, R()), lerp(190, 540, R())],
+  r: lerp(150, 330, R()), lift: lerp(60, 200, R()), th0: R() * Math.PI * 2, w: lerp(.82, 1.22, R()),
+  ph: R() * 6.28, fl: R() * 6.28,
+  app: T_APPEAR0 + (T_APPEAR1 - T_APPEAR0) * R()
+}));
+const SPIN_A = Math.PI * 2 * 1.7, SPIN_W = 2 * SPIN_A / (T_VORTEX - T_SWIRL);
+function spin(t) {
+  if (t < T_SWIRL) return 0;
+  if (t < T_VORTEX) { const u = (t - T_SWIRL) / (T_VORTEX - T_SWIRL); return SPIN_A * u * u; }
+  return SPIN_A + SPIN_W * (t - T_VORTEX);
+}
+function vortex(p, t) {
+  const th = p.th0 + spin(t) * p.w;
+  const lift = p.lift + 16 * Math.sin(1.6 * t + p.ph);
+  return { x: CF[0] + p.r * Math.cos(th), y: CF[1] - lift + p.r * .27 * Math.sin(th), d: (1 + Math.sin(th)) / 2 };
+}
+function floatPos(p, t) { return [p.p0[0] + 10 * Math.sin(.9 * t + p.fl), p.p0[1] + 8 * Math.cos(1.1 * t + p.fl)]; }
+
+/* 이름 하나의 상태(위치·크기·밝기) */
+function nameState(k, t) {
+  const p = P[k], e = exits[k], L = lands[k];
+  if (IDLE || t < p.app) return null;
+  if (t >= L) { const [x, y] = slotXY(p.g, slot[k]); return { x, y, fs: NFS, a: 1, phase: 'landed' }; }
+  if (t < e) {
+    const a = eOut(seg(t, p.app, p.app + .35)), pop = .6 + .4 * eBack(seg(t, p.app, p.app + .45));
+    const b = eIO(seg(t, T_SWIRL, T_VORTEX));
+    const f = floatPos(p, t), v = vortex(p, t);
+    const depth = lerp(1, v.d, b);
+    return { x: lerp(f[0], v.x, b), y: lerp(f[1], v.y, b), fs: 31 * pop * lerp(1, .72 + .38 * depth, b), a: a * lerp(1, .45 + .55 * depth, b), depth, phase: 'orbit', blur: b };
+  }
+  const v0 = vortex(p, e), start = [v0.x, v0.y], sfs = 31 * (.72 + .38 * v0.d);
+  const [sx, sy] = slotXY(p.g, slot[k]);
+  if (k < CALLS && t < e + CALL) {           // 호명: 가운데로 크게
+    const u = eOut(seg(t, e, e + CALL));
+    return { x: lerp(start[0], 960, u), y: lerp(start[1], 330, u), fs: lerp(sfs, 92, u), a: 1, phase: 'call', u };
+  }
+  const f0 = k < CALLS ? [960, 330] : start, fs0 = k < CALLS ? 92 : sfs, t0 = k < CALLS ? e + CALL : e;
+  const u = eIO(seg(t, t0, L));
+  const c1 = [f0[0] + (sx - f0[0]) * .15, f0[1] - 170], c2 = [sx, sy - 260];
+  const [x, y] = bez(f0, c1, c2, [sx, sy], u);
+  return { x, y, fs: lerp(fs0, NFS, u), a: 1, phase: 'fly', u, t0, f0, c1, c2, sx, sy };
+}
+
+/* ── 고정 그림(한 번만) ── */
+function offscreen(w, h, fn) { const c = document.createElement('canvas'); c.width = w; c.height = h; fn(c.getContext('2d')); return c; }
+const BG = offscreen(W, H, g => {
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#0A0820'); gr.addColorStop(.55, '#1A1240'); gr.addColorStop(1, '#2A1430');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  const r2 = g.createRadialGradient(960, 480, 40, 960, 480, 900); r2.addColorStop(0, 'rgba(120,80,190,.35)'); r2.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = r2; g.fillRect(0, 0, W, H);
+  const fog = g.createLinearGradient(0, 760, 0, H); fog.addColorStop(0, 'rgba(214,182,118,0)'); fog.addColorStop(1, 'rgba(214,182,118,.10)');
+  g.fillStyle = fog; g.fillRect(0, 760, W, H - 760);
+});
+const RS = rng(7);
+const STARS = Array.from({ length: 170 }, () => ({ x: RS() * W, y: RS() * 620, r: .6 + RS() * 1.8, ph: RS() * 6.28, sp: .8 + RS() * 2.2 }));
+const CANDLES = [];
+{ const rc = rng(11);
+  const xs = [90, 190, 300, 400, 500, 1420, 1520, 1620, 1730, 1830];
+  xs.forEach((x, i) => CANDLES.push({ x: x + (rc() - .5) * 40, y: 70 + rc() * 190, s: .65 + rc() * .55, ph: rc() * 6.28 })); }
+const CANDLE = offscreen(60, 160, g => {
+  const body = g.createLinearGradient(18, 0, 42, 0); body.addColorStop(0, '#E8DCC2'); body.addColorStop(.5, '#FFF8E8'); body.addColorStop(1, '#D9CBAE');
+  g.fillStyle = body; g.beginPath(); g.roundRect(18, 52, 24, 100, 4); g.fill();
+  g.fillStyle = '#F5ECD8'; g.beginPath(); g.ellipse(30, 52, 12, 4, 0, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#3A2A1A'; g.lineWidth = 2; g.beginPath(); g.moveTo(30, 52); g.lineTo(30, 44); g.stroke();
+});
+const BANNER = [];
+function buildBanners() {
+  BANNER.length = 0;
+  (DATA.groups || []).forEach((gp, gi) => {
+    BANNER.push(offscreen(Math.ceil(BW) + 20, BBOT - ROD + 20, g => {
+      const w = BW, x0 = 10, y0 = 6, h = BBOT - BTOP, notch = 34;
+      const path = () => { g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + w, y0); g.lineTo(x0 + w, y0 + h); g.lineTo(x0 + w / 2, y0 + h - notch); g.lineTo(x0, y0 + h); g.closePath(); };
+      g.save(); g.shadowColor = 'rgba(0,0,0,.5)'; g.shadowBlur = 18; g.shadowOffsetY = 8; path(); g.fillStyle = gp.color; g.fill(); g.restore();
+      const gr = g.createLinearGradient(0, y0, 0, y0 + h); gr.addColorStop(0, 'rgba(255,255,255,.18)'); gr.addColorStop(.35, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(0,0,0,.38)');
+      path(); g.fillStyle = gr; g.fill();
+      g.save(); path(); g.clip(); g.globalAlpha = .06; g.strokeStyle = '#fff'; g.lineWidth = 1;
+      for (let d = -h; d < w + h; d += 7) { g.beginPath(); g.moveTo(x0 + d, y0); g.lineTo(x0 + d - h, y0 + h); g.stroke(); }
+      g.restore();
+      g.save(); g.translate(0, 0);
+      const inset = 9; g.beginPath(); g.moveTo(x0 + inset, y0 + inset); g.lineTo(x0 + w - inset, y0 + inset); g.lineTo(x0 + w - inset, y0 + h - inset - 4); g.lineTo(x0 + w / 2, y0 + h - notch - inset + 2); g.lineTo(x0 + inset, y0 + h - inset - 4); g.closePath();
+      g.strokeStyle = 'rgba(233,199,123,.85)'; g.lineWidth = 2.5; g.stroke(); g.restore();
+      g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(x0 + 16, y0 + 118, w - 32, 2);
+      g.fillStyle = 'rgba(233,199,123,.9)'; g.fillRect(x0 + 16, y0 + 116, w - 32, 2);
+      // 문장(마름모 + 별)
+      g.save(); g.translate(x0 + w / 2, y0 + 24); g.fillStyle = 'rgba(233,199,123,.95)';
+      g.beginPath(); g.moveTo(0, -12); g.lineTo(10, 0); g.lineTo(0, 12); g.lineTo(-10, 0); g.closePath(); g.fill();
+      g.fillStyle = gp.color; g.beginPath(); g.arc(0, 0, 4, 0, Math.PI * 2); g.fill(); g.restore();
+      let fs = 36; g.font = `900 ${fs}px ${SERIF}`;
+      while (g.measureText(gp.label).width > w - 36 && fs > 18) { fs -= 1; g.font = `900 ${fs}px ${SERIF}`; }
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = IVORY; g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 6;
+      g.fillText(gp.label, x0 + w / 2, y0 + 60);
+    }));
+  });
+}
+
+/* ── 그리기 조각 ── */
+function txtGlow(s, x, y, fs, a, glow, font, color) {
+  ctx.font = `${font || '600'} ${fs}px ${SERIF}`;
+  ctx.globalAlpha = a; ctx.shadowColor = glow || 'rgba(255,200,100,.95)'; ctx.shadowBlur = fs * .55;
+  ctx.fillStyle = color || IVORY; ctx.fillText(s, x, y);
+  ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+}
+function fitFs(s, fs, maxw, weight) { ctx.font = `${weight || 600} ${fs}px ${SERIF}`; const w = ctx.measureText(s).width; return w > maxw ? fs * maxw / w : fs; }
+function drawStars() {
+  const t = AMB; ctx.fillStyle = '#FFF6DA';
+  for (const s of STARS) { ctx.globalAlpha = .25 + .55 * (.5 + .5 * Math.sin(t * s.sp + s.ph)); ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.283); ctx.fill(); }
+  ctx.globalAlpha = 1;
+}
+function drawCandles() {
+  const t = AMB;
+  for (const c of CANDLES) {
+    const y = c.y + 7 * Math.sin(t * .8 + c.ph);
+    ctx.save(); ctx.translate(c.x, y); ctx.scale(c.s, c.s);
+    ctx.globalCompositeOperation = 'lighter';
+    const fl = 1 + .12 * Math.sin(t * 13 + c.ph) + .08 * Math.sin(t * 21 + c.ph * 2);
+    const gl = ctx.createRadialGradient(0, -14, 2, 0, -14, 70 * fl); gl.addColorStop(0, 'rgba(255,200,110,.55)'); gl.addColorStop(1, 'rgba(255,170,60,0)');
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(0, -14, 70 * fl, 0, 6.283); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.drawImage(CANDLE, -30, -48);
+    ctx.fillStyle = '#FFE9A8'; ctx.beginPath(); ctx.ellipse(0, -14 + 44 - 44, 5 * fl, 12 * fl, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.ellipse(0, -11, 2.4, 6, 0, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+}
+const GLYPHS = Array.from({ length: 40 }, (_, i) => i);
+function glyph(i) {                            // 마법진 테두리의 기호(지어낸 모양)
+  const k = i % 6; ctx.beginPath();
+  if (k === 0) { ctx.moveTo(-7, 8); ctx.lineTo(0, -9); ctx.lineTo(7, 8); }
+  else if (k === 1) { ctx.arc(0, 0, 6, 0, 6.283); ctx.moveTo(0, -10); ctx.lineTo(0, 10); }
+  else if (k === 2) { ctx.moveTo(-7, -8); ctx.lineTo(7, -8); ctx.lineTo(-7, 8); ctx.lineTo(7, 8); }
+  else if (k === 3) { ctx.moveTo(0, -9); ctx.lineTo(0, 9); ctx.moveTo(-6, -3); ctx.lineTo(6, 3); }
+  else if (k === 4) { ctx.moveTo(-7, 0); ctx.lineTo(0, -8); ctx.lineTo(7, 0); ctx.lineTo(0, 8); ctx.closePath(); }
+  else { ctx.moveTo(-6, -8); ctx.lineTo(-6, 8); ctx.moveTo(-6, 0); ctx.lineTo(6, -8); ctx.moveTo(-6, 0); ctx.lineTo(6, 8); }
+  ctx.stroke();
+}
+function power(t) {                            // 마법진 밝기
+  if (IDLE) return .3 + .1 * Math.sin(AMB * 1.6);
+  if (t < 1) return .25 * seg(t, 0, 1);
+  if (t < T_SWIRL) return .25 + .1 * seg(t, 1, T_SWIRL);
+  if (t < T_VORTEX) return .35 + .65 * seg(t, T_SWIRL, T_VORTEX);
+  if (t < T_FIN) return .9 + .1 * Math.sin(t * 7);
+  return lerp(1, .38, seg(t, T_FIN, T_FIN + 2.5));
+}
+/* 마법진: 빛번짐(shadowBlur)을 기울인·납작한 그림에 매 장면 그리면 컴퓨터에 따라 아주 느려짐(초당 3장) →
+   처음에 한 번만 그려 두고(MC), 매 장면엔 그려 둔 그림을 밝기만 바꿔 얹음 */
+const MC = {};
+function buildCircle() {
+  const ring = (blur) => offscreen(720, 280, g => {          // 고리 4개: 화면 모양(납작한 타원) 그대로 그려 둠 → 빛번짐도 화면과 같음
+    g.translate(360, 140); g.scale(1, .3);
+    g.strokeStyle = 'rgb(240,205,130)'; g.shadowColor = 'rgba(255,200,110,.9)'; g.shadowBlur = blur;
+    for (const [r, lw] of [[300, 4], [272, 2], [230, 3], [150, 2]]) { g.lineWidth = lw; g.beginPath(); g.arc(0, 0, r, 0, 6.283); g.stroke(); }
+  });
+  MC.ringLo = ring(6); MC.ringHi = ring(20);
+  MC.halo = offscreen(880, 300, g => {
+    g.translate(440, 150); g.scale(1, .3);
+    const h = g.createRadialGradient(0, 0, 40, 0, 0, 420); h.addColorStop(0, 'rgba(255,210,120,.32)'); h.addColorStop(1, 'rgba(255,190,90,0)');
+    g.fillStyle = h; g.beginPath(); g.arc(0, 0, 420, 0, 6.283); g.fill();
+  });
+  const S = 600, keep = ctx;                                   // 도는 기호 고리·별(납작하게 하기 전 모양)
+  MC.glyph = offscreen(S, S, g => {
+    g.translate(S / 2, S / 2); g.strokeStyle = 'rgb(240,205,130)'; g.lineWidth = 2.2; g.lineCap = 'round'; g.lineJoin = 'round';
+    g.shadowColor = 'rgba(255,200,110,.9)'; g.shadowBlur = 8;
+    ctx = g;
+    for (const i of GLYPHS) { const a = i / GLYPHS.length * 6.283; g.save(); g.translate(Math.cos(a) * 251, Math.sin(a) * 251); g.rotate(a + Math.PI / 2); glyph(i); g.restore(); }
+    ctx = keep;
+  });
+  MC.hex = offscreen(S, S, g => {
+    g.translate(S / 2, S / 2); g.strokeStyle = 'rgb(240,205,130)'; g.lineWidth = 2.5; g.lineJoin = 'round';
+    g.shadowColor = 'rgba(255,200,110,.9)'; g.shadowBlur = 8;
+    for (const off of [0, Math.PI / 3]) { g.beginPath(); for (let j = 0; j < 4; j++) { const a = off + j * 2 * Math.PI / 3; const x = Math.cos(a) * 228, y = Math.sin(a) * 228; j ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
+  });
+  MC.col = offscreen(640, 460, g => {                          // 빛기둥
+    const ox = 320, oy = 450;
+    const c = g.createLinearGradient(0, oy - 430, 0, oy); c.addColorStop(0, 'rgba(255,214,140,0)'); c.addColorStop(1, 'rgba(255,214,140,.2)');
+    g.fillStyle = c; g.beginPath(); g.moveTo(ox - 300, oy); g.bezierCurveTo(ox - 250, oy - 200, ox - 120, oy - 380, ox - 60, oy - 440);
+    g.lineTo(ox + 60, oy - 440); g.bezierCurveTo(ox + 120, oy - 380, ox + 250, oy - 200, ox + 300, oy); g.closePath(); g.fill();
+  });
+}
+function drawCircle(t) {
+  const pw = power(t), ra = .35 + .6 * pw;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = clamp(pw); ctx.drawImage(MC.halo, CF[0] - 440, CF[1] - 150);
+  ctx.globalAlpha = ra * (1 - clamp(pw)); ctx.drawImage(MC.ringLo, CF[0] - 360, CF[1] - 140);
+  ctx.globalAlpha = ra * clamp(pw); ctx.drawImage(MC.ringHi, CF[0] - 360, CF[1] - 140);
+  ctx.globalAlpha = ra;
+  ctx.translate(CF[0], CF[1]); ctx.scale(1, .3);
+  ctx.save(); ctx.rotate(AMB * .22); ctx.drawImage(MC.glyph, -300, -300); ctx.restore();
+  ctx.save(); ctx.rotate(-AMB * .14); ctx.drawImage(MC.hex, -300, -300); ctx.restore();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = clamp(pw); ctx.drawImage(MC.col, CF[0] - 320, CF[1] - 450);
+  ctx.restore();
+}
+function sparkleDot(x, y, r, a, col) {
+  ctx.globalAlpha = a; ctx.fillStyle = col || '#FFE7A6';
+  ctx.beginPath(); ctx.moveTo(x, y - r * 2.2); ctx.lineTo(x + r * .5, y - r * .5); ctx.lineTo(x + r * 2.2, y); ctx.lineTo(x + r * .5, y + r * .5);
+  ctx.lineTo(x, y + r * 2.2); ctx.lineTo(x - r * .5, y + r * .5); ctx.lineTo(x - r * 2.2, y); ctx.lineTo(x - r * .5, y - r * .5); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+const VSP = Array.from({ length: 90 }, (_, i) => { const r = rng(300 + i); return { r: lerp(110, 380, r()), lift: lerp(30, 300, r()), th: r() * 6.28, w: lerp(.7, 1.5, r()), s: .8 + r() * 1.6, ph: r() * 6.28 }; });
+function drawVortexSparkles(t, front) {
+  const amt = seg(t, T_SWIRL, T_VORTEX) * (1 - seg(t, T_FIN - .4, T_FIN + .6));
+  if (amt <= 0) return;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (const s of VSP) {
+    const th = s.th + spin(t) * s.w * 1.1, d = (1 + Math.sin(th)) / 2;
+    if ((d >= .5) !== front) continue;
+    const x = CF[0] + s.r * Math.cos(th), y = CF[1] - s.lift - 10 * Math.sin(t * 2 + s.ph) + s.r * .27 * Math.sin(th);
+    sparkleDot(x, y, s.s * (.6 + .6 * d), amt * (.35 + .65 * d) * (.5 + .5 * Math.sin(t * 9 + s.ph)));
+  }
+  ctx.restore();
+}
+function drawTrail(st, k, t) {
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const col = DATA.groups[P[k].g].color;
+  for (let j = 1; j <= 14; j++) {
+    const tt = t - j * .022; if (tt < st.t0) break;
+    const u = eIO(seg(tt, st.t0, lands[k]));
+    const [x, y] = bez(st.f0, st.c1, st.c2, [st.sx, st.sy], u);
+    sparkleDot(x + Math.sin(j * 7.1 + k) * 6, y + Math.cos(j * 5.3 + k) * 6, 2.6 - j * .13, .75 * (1 - j / 15), j % 3 ? '#FFE3A0' : col);
+  }
+  ctx.restore();
+}
+function drawBursts(t) {
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (let k = 0; k < N; k++) {
+    const dt = t - lands[k]; if (dt < 0 || dt > .9) continue;
+    const [x, y] = slotXY(P[k].g, slot[k]); const r = rng(900 + k);
+    for (let j = 0; j < 14; j++) {
+      const a = r() * 6.283, sp = 90 + r() * 170, px = x + Math.cos(a) * sp * dt * (1 - dt / 1.8), py = y + Math.sin(a) * sp * dt * (1 - dt / 1.8) + 40 * dt * dt;
+      sparkleDot(px, py, 1.6 + r() * 2, (1 - dt / .9), j % 2 ? '#FFE7A6' : DATA.groups[P[k].g].color);
+    }
+  }
+  ctx.restore();
+}
+function bannerClip(bx, dy) {
+  const x0 = bx, y0 = BTOP + dy, w = BW, h = BBOT - BTOP, notch = 34;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + w, y0); ctx.lineTo(x0 + w, y0 + h); ctx.lineTo(x0 + w / 2, y0 + h - notch); ctx.lineTo(x0, y0 + h); ctx.closePath();
+}
+function lastLand(g, t) { let m = -9; for (let k = 0; k < N; k++) if (P[k].g === g && lands[k] <= t && lands[k] > m) m = lands[k]; return m; }
+function drawBanners(t) {
+  const rise = g => eOut(seg(t, .2 + g * .07, .9 + g * .07));
+  ctx.save();
+  // 금빛 막대
+  for (let g = 0; g < G; g++) {
+    const r = rise(g); if (r <= 0) continue;
+    const bx = BX0 + g * (BW + GAP), dy = (1 - r) * 520;
+    ctx.globalAlpha = r;
+    ctx.drawImage(BANNER[g], bx - 10, ROD + dy);
+    const rod = ctx.createLinearGradient(0, ROD + dy - 6, 0, ROD + dy + 6); rod.addColorStop(0, '#FFF0B8'); rod.addColorStop(.5, '#C99A3E'); rod.addColorStop(1, '#7A5A1E');
+    ctx.fillStyle = rod; ctx.fillRect(bx - 12, ROD + dy - 5, BW + 24, 11);
+    ctx.fillStyle = '#E9C77B'; ctx.beginPath(); ctx.arc(bx - 12, ROD + dy, 8, 0, 6.283); ctx.arc(bx + BW + 12, ROD + dy, 8, 0, 6.283); ctx.fill();
+    // 인원 수
+    const n = P.filter((p, k) => p.g === g && lands[k] <= t).length;
+    ctx.font = `500 21px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,244,214,.78)';
+    ctx.fillText(`${n}명`, bx + BW / 2, ROD + dy + 101);
+    // 착지 번쩍
+    const fl = 1 - seg(t - lastLand(g, t), 0, .45);
+    if (fl > 0 && fl < 1) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = fl * .35 * r; ctx.fillStyle = '#FFE3A0'; bannerClip(bx, dy); ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }
+    // 끝난 뒤 은은한 숨쉬기
+    const fin = seg(t, T_FIN, T_FIN + .8);
+    if (fin > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = fin * (.06 + .05 * Math.sin(t * 2.2 + g)); ctx.fillStyle = '#FFE3A0'; bannerClip(bx, dy); ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }
+  }
+  ctx.restore(); ctx.globalAlpha = 1;
+}
+function drawTitle(t) {
+  const a = eOut(seg(t, 0, 1.1));
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = a * .9; ctx.font = `600 22px ${SANS}`; ctx.fillStyle = GOLD;
+  if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '8px';
+  ctx.fillText(DATA.event || '', 960, 36);
+  if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '0px';
+  const tg = ctx.createLinearGradient(0, 62, 0, 124); tg.addColorStop(0, '#FFF3C4'); tg.addColorStop(.55, '#E9C77B'); tg.addColorStop(1, '#B98A35');
+  ctx.globalAlpha = a; ctx.font = `900 66px ${SERIF}`; ctx.shadowColor = 'rgba(255,190,90,.55)'; ctx.shadowBlur = 24; ctx.fillStyle = tg;
+  ctx.fillText(DATA.title || '마법의 분임 배정식', 960, 94); ctx.shadowBlur = 0;
+  let msg = '마법진이 깨어나는 중…';
+  if (IDLE) { ctx.globalAlpha = a * (.6 + .3 * Math.sin(AMB * 2.2)); ctx.font = `500 32px ${SANS}`; ctx.fillStyle = IVORY; ctx.fillText('곧 마법의 분임 배정식이 시작됩니다', 960, 156); ctx.globalAlpha = 1; return; }
+  if (t >= T_APPEAR0) msg = '오늘 함께할 모두의 이름이 떠오릅니다';
+  if (t >= T_SWIRL) msg = '이름이 마법진 속으로 섞이는 중…';
+  if (t >= T_SORT) msg = '마법이 분임을 정하는 중…';
+  if (t >= T_FIN) msg = '';
+  if (msg) { ctx.globalAlpha = a * (.65 + .2 * Math.sin(t * 3)); ctx.font = `500 30px ${SANS}`; ctx.fillStyle = IVORY; ctx.fillText(msg, 960, 156); }
+  ctx.globalAlpha = 1;
+}
+function drawFinale(t) {
+  const u = seg(t, T_FIN, T_FIN + .9); if (u <= 0) return;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const rr = rng(77);
+  for (let j = 0; j < 110; j++) {                 // 금가루 비
+    const st = T_FIN + rr() * 3.2, dur = 2.6 + rr() * 2.2, x = rr() * W, sz = 1.4 + rr() * 2.6, sway = rr() * 6.28;
+    const k = (t - st) / dur; if (k < 0) continue; const kk = k % 1;
+    const fade = t - st > 6 ? .45 : 1;
+    sparkleDot(x + 26 * Math.sin(kk * 6 + sway), -20 + kk * 640, sz, (1 - kk) * fade * (.5 + .5 * Math.sin(t * 8 + j)), j % 4 ? '#FFE7A6' : '#FFFFFF');
+  }
+  ctx.restore();
+  const s = .7 + .3 * eBack(seg(t, T_FIN, T_FIN + .7));
+  ctx.save(); ctx.translate(960, 300); ctx.scale(s, s); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const tg = ctx.createLinearGradient(0, -60, 0, 60); tg.addColorStop(0, '#FFF6D2'); tg.addColorStop(.6, '#EAC777'); tg.addColorStop(1, '#C28F35');
+  ctx.globalAlpha = u; ctx.font = `900 128px ${SERIF}`; ctx.shadowColor = 'rgba(255,200,100,.9)'; ctx.shadowBlur = 40; ctx.fillStyle = tg;
+  ctx.fillText('배정 완료!', 0, -18); ctx.shadowBlur = 0; ctx.restore();
+  const u2 = seg(t, T_FIN + .5, T_FIN + 1.3);
+  ctx.globalAlpha = u2; ctx.font = `500 36px ${SANS}`; ctx.fillStyle = IVORY; ctx.textAlign = 'center'; ctx.shadowColor = 'rgba(10,6,30,.95)'; ctx.shadowBlur = 14;
+  ctx.fillText('내 이름을 찾아 우리 분임 자리로 모여 주세요', 960, 376); ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+}
+
+/* ── 한 장면 ── */
+function frame(t, amb) {
+  AMB = amb === undefined ? t : amb;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  ctx.drawImage(BG, 0, 0);
+  drawStars(); drawCandles(); drawTitle(t);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const states = []; for (let k = 0; k < N; k++) { const s = nameState(k, t); if (s) states.push([k, s]); }
+  const orbit = states.filter(([, s]) => s.phase === 'orbit').sort((a, b) => a[1].depth - b[1].depth);
+  const back = orbit.filter(([, s]) => s.depth < .5), front = orbit.filter(([, s]) => !(s.depth < .5));
+  let dim = 1; for (const [, s] of states) if (s.phase === 'call') dim = Math.min(dim, 1 - .6 * Math.sin(Math.PI * Math.min(1, s.u * 1.4)) ** .5);
+  for (const [k, s] of states) if (s.phase === 'fly' && k < CALLS) dim = Math.min(dim, .4 + .6 * s.u);
+  drawVortexSparkles(t, false);
+  for (const [k, s] of back) txtGlow(P[k].name, s.x, s.y, s.fs, s.a * .85 * dim);
+  drawCircle(t);
+  for (const [k, s] of front) txtGlow(P[k].name, s.x, s.y, s.fs, s.a * dim);
+  drawVortexSparkles(t, true);
+  drawBanners(t);
+  // 꽂힌 이름
+  for (const [k, s] of states) if (s.phase === 'landed') {
+    const g = P[k].g, ri = eOut(seg(t, .2 + g * .07, .9 + g * .07)); const dy = (1 - ri) * 520;
+    const fs = fitFs(P[k].name, s.fs, (COLS === 2 ? BW / 2 : BW) - 22);
+    const glow = 1 - seg(t - lands[k], 0, .8);
+    txtGlow(P[k].name, s.x, s.y + dy, fs, 1, `rgba(255,214,140,${.25 + .7 * glow})`, '600', glow > 0 ? '#FFFBEA' : IVORY);
+  }
+  for (const [k, s] of states) {
+    if (s.phase === 'fly') { drawTrail(s, k, t); txtGlow(P[k].name, s.x, s.y, s.fs, 1, 'rgba(255,210,120,1)', '900'); }
+    if (s.phase === 'call') {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const rr = ctx.createRadialGradient(s.x, s.y, 10, s.x, s.y, 260 * s.u); rr.addColorStop(0, `rgba(255,220,150,${.45 * s.u})`); rr.addColorStop(1, 'rgba(255,200,120,0)');
+      ctx.fillStyle = rr; ctx.beginPath(); ctx.arc(s.x, s.y, 260, 0, 6.283); ctx.fill(); ctx.restore();
+      txtGlow(P[k].name, s.x, s.y, s.fs, 1, 'rgba(255,210,120,1)', '900');
+    }
+  }
+  drawBursts(t);
+  drawFinale(t);
+}
+
+/* ── 소리 (WebAudio · 직접 만든 효과음) ── */
+const PENTA = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.5];
+function bell(ac, out, at, f, v, d) {
+  for (const [m, a, dd] of [[1, 1, 1], [2.76, .35, .55], [5.4, .18, .35], [8.93, .08, .22]]) {
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.value = f * m;
+    g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(v * a, at + .006); g.gain.exponentialRampToValueAtTime(.0001, at + d * dd);
+    o.connect(g); g.connect(out); o.start(at); o.stop(at + d * dd + .05);
+  }
+}
+let NOISE = null;
+function noise(ac) { if (NOISE && NOISE.sampleRate === ac.sampleRate) return NOISE; const b = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const d = b.getChannelData(0); const r = rng(5); for (let i = 0; i < d.length; i++) d[i] = r() * 2 - 1; NOISE = b; return b; }
+function whoosh(ac, out, at, dur, f0, f1, v) {
+  const s = ac.createBufferSource(); s.buffer = noise(ac); s.loop = true;
+  const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.4; bp.frequency.setValueAtTime(f0, at); bp.frequency.exponentialRampToValueAtTime(f1, at + dur);
+  const g = ac.createGain(); g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(v, at + dur * .6); g.gain.linearRampToValueAtTime(0, at + dur);
+  s.connect(bp); bp.connect(g); g.connect(out); s.start(at); s.stop(at + dur + .05);
+}
+function schedule(ac, out, base, from) {
+  const ev = (t, fn) => { if (t >= from) fn(base + t - from); };
+  ev(.2, a => { whoosh(ac, out, a, 1.6, 300, 2400, .18); bell(ac, out, a + 1, 1046.5, .12, 2.2); });
+  for (let i = 0; i < 9; i++) ev(T_APPEAR0 + i * .18, a => bell(ac, out, a, PENTA[(i * 3) % 8] * 2, .05, .9));
+  ev(T_SWIRL, a => whoosh(ac, out, a, T_VORTEX - T_SWIRL + .6, 160, 3800, .22));
+  { let tt = T_SWIRL; let k = 0; while (tt < T_VORTEX + .3) { const u = seg(tt, T_SWIRL, T_VORTEX); const tc = tt; const kk = k; ev(tc, a => bell(ac, out, a, PENTA[kk % 8] * (u > .5 ? 2 : 1), .06 + .05 * u, .8)); tt += lerp(.24, .07, u); k++; } }
+  for (let k = 0; k < N; k++) {
+    const g = P[k].g;
+    if (k < CALLS) ev(exits[k], a => { whoosh(ac, out, a, .55, 600, 3000, .14); bell(ac, out, a + .05, 1567.98, .09, 1.2); });
+    else ev(exits[k], a => whoosh(ac, out, a, .5, 900, 2600, .05));
+    ev(lands[k], a => bell(ac, out, a, PENTA[g % PENTA.length], .2, 1.5));
+  }
+  ev(T_FIN, a => { [261.63, 329.63, 392.0, 523.25, 659.25].forEach((f, i) => bell(ac, out, a + i * .03, f, .16, 3.4)); whoosh(ac, out, a, 2.2, 2000, 8000, .12);
+    for (let i = 0; i < 14; i++) bell(ac, out, a + .25 + i * .07, PENTA[i % 8] * 2, .06, .9); });
+}
+function wavB64(buf) {
+  const ch = buf.numberOfChannels, len = buf.length, sr = buf.sampleRate, out = new DataView(new ArrayBuffer(44 + len * ch * 2));
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) out.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); out.setUint32(4, 36 + len * ch * 2, true); ws(8, 'WAVE'); ws(12, 'fmt '); out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, ch, true);
+  out.setUint32(24, sr, true); out.setUint32(28, sr * ch * 2, true); out.setUint16(32, ch * 2, true); out.setUint16(34, 16, true); ws(36, 'data'); out.setUint32(40, len * ch * 2, true);
+  const data = []; for (let c = 0; c < ch; c++) data.push(buf.getChannelData(c));
+  let o = 44; for (let i = 0; i < len; i++) for (let c = 0; c < ch; c++) { const v = Math.max(-1, Math.min(1, data[c][i])); out.setInt16(o, v * 32767, true); o += 2; }
+  let s = ''; const u8 = new Uint8Array(out.buffer); for (let i = 0; i < u8.length; i += 32768) s += String.fromCharCode.apply(null, u8.subarray(i, i + 32768)); return btoa(s);
+}
+window.__renderAudio = async (secs) => {
+  const ac = new OfflineAudioContext(2, Math.ceil(44100 * secs), 44100);
+  const comp = ac.createDynamicsCompressor(); comp.connect(ac.destination);
+  schedule(ac, comp, 0, 0);
+  return wavB64(await ac.startRendering());
+};
+
+/* ── 실행 ── */
+window.__T_END = T_FIN + 4;
+window.__frame = t => frame(t);
+async function main() {
+  // 한글 웹글꼴은 글자 묶음별로 나뉘어 있어서, 화면에 나올 글자(이름 전부·제목·안내)를 미리 받아 둠(최대 2.5초 기다림)
+  const ALL = [DATA.title || '마법의 분임 배정식', DATA.event || '', ...(DATA.groups || []).map(g => g.label), ...seq.map(x => x[0]),
+    '마법진이 깨어나는 중… 오늘 함께할 모두의 이름이 떠오릅니다 섞이는 정하는 배정 완료! 내 이름을 찾아 우리 분임 자리로 모여 주세요 곧 시작됩니다 0123456789명'].join(' ');
+  const fonts = [`900 66px ${SERIF}`, `600 30px ${SERIF}`, `500 30px ${SANS}`, `600 22px ${SANS}`];
+  await Promise.race([Promise.all(fonts.map(f => document.fonts.load(f, ALL).catch(() => 0))), new Promise(r => setTimeout(r, 2500))]);
+  buildBanners(); buildCircle();
+  if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', buildBanners);   // 글꼴이 늦게 와도 깃발 글씨를 다시 그림
+  window.__ready = true;
+  if (window.__capture) return;
+  const since = Math.max(0, +DATA.since || 0);
+  const late = !IDLE && (DATA.mode === 'final' || since > T_FIN + 3);   // 끝난 뒤에 다시 열리면(새로 고침 등) 결과만
+  const skip = !IDLE && !late && since > 6 ? since : 0;                // 하는 도중에 다시 열리면 그 자리부터 이어서
+  const t0 = performance.now();
+  const TL = a => IDLE ? Math.min(a, 2) : late ? a + T_FIN + 6 : a + skip;
+  if (!late && !IDLE) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; const ac = new AC();
+      const comp = ac.createDynamicsCompressor(); comp.connect(ac.destination);
+      const go = () => schedule(ac, comp, ac.currentTime + .05, TL((performance.now() - t0) / 1000));
+      if (ac.state === 'running') go();
+      else { ac.resume().then(() => { if (ac.state === 'running') go(); }).catch(() => {});
+        setTimeout(() => { if (ac.state !== 'running') { const b = document.getElementById('snd'); b.style.display = 'block'; b.onclick = () => { ac.resume().then(go); b.style.display = 'none'; }; } }, 600); }
+    } catch (e) {}
+  }
+  let last = 0;
+  const loop = ms => {
+    const a = (ms - t0) / 1000, t = TL(a);
+    if ((IDLE || t > T_FIN + 8) && ms - last < 33) { requestAnimationFrame(loop); return; }   // 기다리는 중·끝난 뒤에는 30fps로 아껴서
+    last = ms; frame(t, a); requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+main();
+</script></body></html>
+"""
+
+
 DRUMROLL = os.path.join(store.BASE, "drumroll.mp3")      # 결과 발표 두구두구 화면에서 반복되는 드럼롤
 CELEBRATE = os.path.join(store.BASE, "celebrate.mp3")    # 최우수 공개 때 나오는 축하 음악(심벌 '짠!' + 밴드 버전 Jingle Bells)
 _CONF_COLORS = ["#F5C542", "#D8394A", "#2FA35F", "#F4EAD5", "#D6B676", "#6EC6FF", "#FF9BD2"]
@@ -1587,17 +2339,23 @@ def screen_view():
         mode = "board"
     if mode == "deck" and not deck_steps():
         mode = "board"
-    # 영상을 트는 중에는 '틀 영상'이 바뀔 때만 다시 그림(분임이 기획서를 고쳐도 영상이 처음부터 다시 시작하지 않게)
-    tok = (lambda: f"play|{store.screen_get()}") if r else store.board_token
+    if mode == "sort":
+        T = store.team_get()
+        if not T["seq"] and T["show_mode"] != "idle":
+            mode = "board"
+    # 영상을 트는 중에는 '틀 영상'이 바뀔 때만 다시 그림(분임이 기획서를 고쳐도 영상이 처음부터 다시 시작하지 않게). 배정식도 마찬가지
+    tok = (lambda: f"play|{store.screen_get()}") if r else (store.sort_token if mode == "sort" else store.board_token)
     st.session_state["scr_tok"] = tok()
     deck_keys()
     if store.rehearsal_info():
         md('<div style="position:fixed;top:.6vh;right:2.4vw;z-index:999;font-family:\'Noto Serif KR\',serif;font-weight:600;color:#3A1F17;background:#D6B676;'
            'border-radius:999px;padding:.1rem .9rem;font-size:clamp(.85rem,1.1vw,1.2rem)">🧪 리허설</div>')
-    if mode not in ("play", "deck"):
+    if mode not in ("play", "deck", "sort"):
         md(garland_svg())
     if mode == "deck":
         deck_screen(scr["n"])
+    elif mode == "sort":
+        sort_screen(S)
     elif mode == "intro":
         md(f'<div class="sc-sleigh">{_SLEIGH}</div><div class="sc-tree">{tree_svg("tr")}</div>')
         md(intro_html(int(scr["g"]), S))
