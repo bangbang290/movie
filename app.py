@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import html
+import json
 import os
 import random
 import re
@@ -208,6 +209,14 @@ header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecorat
 @keyframes br2{0%{transform:translate(0,0) rotate(0deg);opacity:1}55%{transform:translate(-34vw,-56vh) rotate(-500deg);opacity:1}100%{transform:translate(-46vw,14vh) rotate(-900deg);opacity:0}}
 @keyframes bl3{0%{transform:translate(0,0) rotate(0deg);opacity:1}55%{transform:translate(9vw,-88vh) rotate(500deg);opacity:1}100%{transform:translate(12vw,-18vh) rotate(900deg);opacity:0}}
 @keyframes br3{0%{transform:translate(0,0) rotate(0deg);opacity:1}55%{transform:translate(-9vw,-88vh) rotate(-500deg);opacity:1}100%{transform:translate(-12vw,-18vh) rotate(-900deg);opacity:0}}
+.st-key-deck_keys{position:fixed;left:0;top:0;width:0;height:0;overflow:hidden}
+.st-key-deck_view img,.st-key-deck_view video{position:fixed!important;left:0;top:0;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;object-fit:contain;background:#000;border-radius:0!important;z-index:40}
+.st-key-deck_pre{position:fixed;left:-300vw;top:0;width:8px;height:8px;overflow:hidden}
+.st-key-deck_hit button{position:fixed!important;left:0;top:0;width:100vw!important;height:100vh!important;opacity:0;z-index:45;border:0!important;cursor:pointer}
+.st-key-deck_nav{position:fixed;right:1.4vw;bottom:1.6vh;width:9.5rem;z-index:60;opacity:.16;transition:opacity .2s}
+.st-key-deck_nav:hover{opacity:1}
+.st-key-deck_nav button{min-height:2.4rem;padding:.2rem .6rem;background:rgba(20,20,24,.78)!important;color:#fff!important;border:1px solid rgba(255,255,255,.35)!important;border-radius:8px}
+.sc-deckno{position:fixed;left:1.4vw;bottom:1.8vh;z-index:60;font:600 clamp(.8rem,1vw,1.05rem) "Noto Sans KR",sans-serif;color:#fff;opacity:.35;pointer-events:none}
 [data-testid="stAudio"],.st-key-aud_roll,.st-key-aud_win{position:fixed!important;left:-9999px!important;width:1px!important}
 </style>"""
 
@@ -845,22 +854,24 @@ def admin_view():
     reh = store.rehearsal_info()
     if reh:
         st.warning(f"🧪 리허설 데이터가 들어 있어요({kst(reh.get('at'))} 채움). 행사 전에 꼭 [🧪 리허설] 탭에서 [리허설 끝: 모두 지우기]를 눌러 주세요.")
-    tabs = st.tabs(["📋 진행 현황", "🎞 시사회", "🗳 투표", "🔑 분임 비밀번호·QR", "⚙️ 설정", "💾 백업·초기화", "🧪 리허설"])
+    tabs = st.tabs(["📋 진행 현황", "📽 발표", "🎞 시사회", "🗳 투표", "🔑 분임 비밀번호·QR", "⚙️ 설정", "💾 백업·초기화", "🧪 리허설"])
     with tabs[0]:
         overview()
         md("<hr>")
         detail()
     with tabs[1]:
-        premiere_panel()
+        deck_panel()
     with tabs[2]:
-        vote_panel()
+        premiere_panel()
     with tabs[3]:
-        pw_panel()
+        vote_panel()
     with tabs[4]:
-        settings_panel()
+        pw_panel()
     with tabs[5]:
-        backup_panel()
+        settings_panel()
     with tabs[6]:
+        backup_panel()
+    with tabs[7]:
         rehearsal_panel()
 
 
@@ -877,7 +888,7 @@ def rehearsal_panel():
        f'② 스크린 PC에서 <b>{ESC(url)}/?view=screen</b> 열고 화면 한 번 클릭<br>'
        f'③ <b>[🎞 시사회]</b> 탭에서 [▶ 다음] → 분임 소개 → 샘플 영상(소리 확인) → … → 마지막 뒤 투표 화면(QR)<br>'
        f'④ 휴대폰으로 QR을 찍고 <b>연습1-1</b>, <b>연습2-3</b>처럼 연습 명단 이름으로 투표해 보기 (사람이 적으면 아래 <b>[🎲 연습용 표 채우기]</b>)<br>'
-       f'⑤ <b>[🗳 투표]</b> 탭에서 [⏹ 투표 마감] → [🏆 결과 발표] 3위부터 공개<br>'
+       f'⑤ <b>[🗳 투표]</b> 탭에서 [⏹ 투표 마감] → [🏆 결과 발표 화면 띄우기] 두구두구 → [🎉 최우수상 공개!]<br>'
        f'⑥ 끝나면 <b>[🧹 리허설 끝: 모두 지우기]</b></div>')
     if reh:
         st.info(f"지금 리허설 데이터가 들어 있어요({kst(reh.get('at'))} 채움" + (", 연습 명단 사용 중" if reh.get("roster") else ", 등록한 명단 그대로") + ").")
@@ -928,6 +939,8 @@ def _step_label(step: dict, S: dict) -> str:
         return "투표 화면 (QR)"
     if m == "result":
         return "투표 결과 발표 화면"
+    if m == "deck":
+        return "발표 자료"
     return "대기 판"
 
 
@@ -938,6 +951,68 @@ def _go(step: dict):
         st.rerun()
 
 
+@st.fragment(run_every=4)
+def deck_panel():
+    steps = deck_steps()
+    if not steps:
+        md('<div class="mx mx-note">발표 자료 파일이 없어요. GitHub 저장소에 <b>deck</b> 폴더(슬라이드 그림·영상·deck.json)를 그대로 올려 주세요.</div>')
+        return
+    S = store.get_settings()
+    scr = store.screen_get()
+    on = scr["mode"] == "deck"
+    n = min(scr["n"], len(steps) - 1) if on else 0
+    total = steps[-1].get("slide", len(steps))
+    lab = lambda i: f'{steps[i].get("slide", i + 1)}장 · {steps[i]["title"]}'
+    md('<div class="mx mx-note">PPT 대신 <b>스크린 화면</b>(' + ESC(base_url() or "앱주소") + '/?view=screen)에 발표 자료를 띄웁니다. '
+       '넘기기는 여기 버튼, 또는 스크린 PC에서 <b>→ / ← · 스페이스 · 프레젠터 리모컨 · 화면 클릭</b> 아무거나 쓰면 돼요. '
+       '영상이 있는 장(2장·3장)은 한 번 더 넘기면 영상이 화면 가득 나오고, 영상이 끝나면 다시 넘기면 됩니다. '
+       '발표가 끝나면 <b>[🎞 시사회]</b> 탭으로 넘어가세요.</div>')
+    if not on:
+        md(f'<div class="mx mx-card" style="margin-top:.6rem"><div class="mx-note">지금 스크린</div><div class="mx-h1" style="font-size:1.5rem">📺 {ESC(_step_label(scr, S))}</div>'
+           f'<div class="mx-note">발표 자료 {total}장 준비됨</div></div>')
+        start = st.selectbox("시작할 장", list(range(len(steps))), format_func=lab, key="dk_start")
+        if st.button("📽 발표 자료 띄우기", key="dk_on", type="primary", use_container_width=True):
+            _go({"mode": "deck", "n": start})
+        return
+    x = steps[n]
+    nx = steps[n + 1] if n + 1 < len(steps) else None
+    md(f'<div class="mx mx-card" style="margin-top:.6rem"><div class="mx-note">지금 스크린 · 📽 발표 자료</div>'
+       f'<div class="mx-h1" style="font-size:1.5rem">{x.get("slide", n + 1)} / {total}장 · {ESC(x["title"])}</div></div>')
+    with st.container(key="row_dk_nav"):
+        c1, c2 = st.columns(2)
+        if c1.button("◀ 이전", key="dk_prev", use_container_width=True, disabled=n == 0):
+            _go({"mode": "deck", "n": n - 1})
+        if c2.button("다음 ▶", key="dk_next", type="primary", use_container_width=True, disabled=nx is None):
+            _go({"mode": "deck", "n": n + 1})
+    with st.container(key="row_dk_ctl"):
+        c1, c2 = st.columns(2)
+        if c1.button("⏮ 처음으로", key="dk_first", use_container_width=True, disabled=n == 0):
+            _go({"mode": "deck", "n": 0})
+        if c2.button("⏹ 대기 판으로", key="dk_off", use_container_width=True):
+            _go({"mode": "board"})
+    with st.container(key="row_dk_view"):
+        c1, c2 = st.columns([3, 2])
+        with c1:
+            md('<div class="mx mx-note">지금 화면</div>')
+            if x.get("video"):
+                md(f'<div class="mx mx-card mx-note">🎬 {ESC(x["title"])}<br>스크린에서 영상이 나오는 중</div>')
+            else:
+                st.image(x["path"], use_container_width=True)
+        with c2:
+            md('<div class="mx mx-note">다음</div>')
+            if nx is None:
+                md('<div class="mx mx-card mx-note">마지막 장이에요</div>')
+            elif nx.get("video"):
+                md(f'<div class="mx mx-card mx-note">🎬 {ESC(nx["title"])}</div>')
+            else:
+                st.image(nx["path"], use_container_width=True)
+    if x.get("notes"):
+        md(f'<div class="mx mx-card mx-note"><b>발표 메모</b><br>{ESC(x["notes"])}</div>')
+    jump = st.selectbox("바로 가기", list(range(len(steps))), index=n, format_func=lab)
+    if jump != n:
+        _go({"mode": "deck", "n": jump})
+
+
 @st.fragment(run_every=5)
 def premiere_panel():
     S = store.get_settings()
@@ -946,7 +1021,7 @@ def premiere_panel():
     in_line = {x["g"]: x["clip"] for x in L}
     url = base_url()
     md('<div class="mx mx-note">스크린 PC(프로젝터)에서 <b>' + ESC(url or "앱주소") + '/?view=screen</b>을 열고 화면을 <b>한 번 클릭</b>해 두세요(소리 허용). '
-       '발표 자료를 넘기다가 시사회 차례가 되면 그 창으로 넘어가면 됩니다.<br>'
+       '발표 자료도 같은 스크린 화면에 띄워요(<b>[📽 발표]</b> 탭). 발표가 끝나면 여기서 시작하면 됩니다.<br>'
        '아래 <b>[▶ 다음]</b>만 누르면 <b>분임 소개 화면 → 영상 → 다음 분임 소개</b> 순서로 넘어가고, 마지막 영상 뒤에는 <b>투표 화면(QR)</b>이 뜨면서 투표가 열립니다. '
        '소개 화면에는 기획서의 영상 제목·형식·역할·발표 한마디가 자동으로 나오고, 영상은 그 분임이 <b>가장 최근에 올린 영상</b>이 나옵니다. '
        '결과물이 없는 분임은 건너뜁니다.</div>')
@@ -1374,6 +1449,93 @@ def vote_screen_html(S: dict) -> str:
             f'우리 분임을 뺀 <b>한 편</b>을 골라 주세요</div>{count}<div class="url">{ESC(url)}</div></div></div></div>')
 
 
+DECK_DIR = os.path.join(store.BASE, "deck")            # 발표 자료: 슬라이드 그림(01.jpg…)·영상·deck.json
+
+
+def deck_steps() -> list[dict]:
+    """발표 자료를 넘길 순서(deck/deck.json). 영상이 있는 장은 '장 그림 → 영상(전체 화면)' 두 단계."""
+    try:
+        with open(os.path.join(DECK_DIR, "deck.json"), encoding="utf-8") as f:
+            steps = json.load(f)["steps"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    out = []
+    for x in steps:
+        p = os.path.join(DECK_DIR, os.path.basename(str(x.get("img") or x.get("video") or "")))
+        if os.path.isfile(p):
+            out.append(dict(x, path=p))
+    return out
+
+
+DECK_KEYS_JS = """<script>
+(function () {
+  var P = window.parent; if (!P || !P.document) return;
+  var D = P.document, last = 0;
+  if (P.__deckKey) D.removeEventListener('keydown', P.__deckKey, true);
+  P.__deckKey = function (e) {
+    var t = e.target || {}, tag = (t.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable) return;
+    var k = e.key, dir = null;
+    if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || k === ' ' || k === 'Spacebar' || k === 'Enter') dir = 'next';
+    else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp' || k === 'Backspace') dir = 'prev';
+    if (!dir) return;
+    var b = D.querySelector('.st-key-deck_' + dir + ' button');
+    if (!b) return;                       // 발표 자료 화면이 아닐 때는 키를 건드리지 않음
+    e.preventDefault(); e.stopPropagation();
+    var now = Date.now(); if (now - last < 350) return; last = now;
+    if (!b.disabled) b.click();
+    if (D.activeElement && D.activeElement.blur) D.activeElement.blur();
+  };
+  D.addEventListener('keydown', P.__deckKey, true);
+})();
+</script>"""
+
+
+def deck_keys():
+    """스크린 PC 키보드·프레젠터 리모컨(→ ← 스페이스 PageDown/PageUp)으로 발표 자료 넘기기."""
+    try:
+        from streamlit.components.v1 import html as _html
+    except Exception:
+        return
+    with st.container(key="deck_keys"):
+        _html(DECK_KEYS_JS, height=0)
+
+
+def deck_go(n: int):
+    steps = deck_steps()
+    if steps:
+        store.screen_go({"mode": "deck", "n": min(max(0, int(n)), len(steps) - 1)})
+    st.rerun()
+
+
+def deck_screen(n: int):
+    """발표 자료 한 장을 화면 가득. 클릭·→·스페이스 = 다음, ← = 이전."""
+    steps = deck_steps()
+    n = min(max(0, n), len(steps) - 1)
+    x = steps[n]
+    nxt = steps[n + 1] if n + 1 < len(steps) else None
+    md('<style>.stApp{background:#000!important}.stApp::before,.stApp::after{display:none!important}.block-container{padding:0!important}</style>')
+    with st.container(key="deck_view"):
+        if x.get("video"):
+            st.video(x["path"], format="video/mp4", autoplay=True)
+        else:
+            st.image(x["path"], use_container_width=True)
+    if nxt and nxt.get("img"):
+        with st.container(key="deck_pre"):        # 다음 장 그림을 미리 받아 둠(넘길 때 바로 뜨게)
+            st.image(nxt["path"])
+    if not x.get("video"):
+        with st.container(key="deck_hit"):        # 화면 아무 곳이나 누르면 다음 장
+            if st.button("다음 장", key="deck_hit_btn", disabled=nxt is None):
+                deck_go(n + 1)
+    with st.container(key="deck_nav"):
+        c1, c2 = st.columns(2)
+        if c1.button("◀", key="deck_prev", use_container_width=True, disabled=n == 0):
+            deck_go(n - 1)
+        if c2.button("▶", key="deck_next", use_container_width=True, disabled=nxt is None):
+            deck_go(n + 1)
+    md(f'<div class="sc-deckno">{x.get("slide", n + 1)} / {steps[-1].get("slide", len(steps))}</div>')
+
+
 DRUMROLL = os.path.join(store.BASE, "drumroll.mp3")      # 결과 발표 두구두구 화면에서 반복되는 드럼롤
 CELEBRATE = os.path.join(store.BASE, "celebrate.mp3")    # 최우수 공개 때 나오는 축하 음악(심벌 '짠!' + 밴드 버전 Jingle Bells)
 _CONF_COLORS = ["#F5C542", "#D8394A", "#2FA35F", "#F4EAD5", "#D6B676", "#6EC6FF", "#FF9BD2"]
@@ -1423,15 +1585,20 @@ def screen_view():
     r = store.get_result(scr["rid"]) if mode == "play" and scr["rid"] else None
     if (mode == "play" and not r) or (mode == "intro" and not scr["g"]):
         mode = "board"
+    if mode == "deck" and not deck_steps():
+        mode = "board"
     # 영상을 트는 중에는 '틀 영상'이 바뀔 때만 다시 그림(분임이 기획서를 고쳐도 영상이 처음부터 다시 시작하지 않게)
     tok = (lambda: f"play|{store.screen_get()}") if r else store.board_token
     st.session_state["scr_tok"] = tok()
+    deck_keys()
     if store.rehearsal_info():
         md('<div style="position:fixed;top:.6vh;right:2.4vw;z-index:999;font-family:\'Noto Serif KR\',serif;font-weight:600;color:#3A1F17;background:#D6B676;'
            'border-radius:999px;padding:.1rem .9rem;font-size:clamp(.85rem,1.1vw,1.2rem)">🧪 리허설</div>')
-    if mode != "play":
+    if mode not in ("play", "deck"):
         md(garland_svg())
-    if mode == "intro":
+    if mode == "deck":
+        deck_screen(scr["n"])
+    elif mode == "intro":
         md(f'<div class="sc-sleigh">{_SLEIGH}</div><div class="sc-tree">{tree_svg("tr")}</div>')
         md(intro_html(int(scr["g"]), S))
     elif mode == "end":

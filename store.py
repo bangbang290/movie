@@ -530,8 +530,8 @@ def pending_revisions(g: int) -> list[dict]:
 
 # ───────────────────────── 스크린(프로젝터)에 틀 것
 #   mode: board(대기 판) · intro(분임 소개 화면, g) · play(영상 상영, rid·g) · end(투표 화면: QR·참여 수)
-#         · result(투표 결과 발표, n = 지금까지 공개한 순위 수)
-SCREEN_MODES = ("board", "intro", "play", "end", "result")
+#         · result(투표 결과 발표, n = 지금까지 공개한 순위 수) · deck(발표 자료, n = 지금 보여 주는 장)
+SCREEN_MODES = ("board", "intro", "play", "end", "result", "deck")
 
 
 def _norm_screen(s: dict | None) -> dict:
@@ -561,7 +561,7 @@ def screen_go(step: dict):
         if not r:
             raise StoreError("틀 결과물이 없습니다.")
         g = r["g"]
-    n = max(0, int(step.get("n") or 0)) if mode == "result" else 0
+    n = max(0, int(step.get("n") or 0)) if mode in ("result", "deck") else 0
     with _tx() as c:
         _kv_put(c, "screen", {"mode": mode, "g": g if mode in ("intro", "play") else None,
                               "rid": rid if mode == "play" else None, "n": n, "at": time.time()})
