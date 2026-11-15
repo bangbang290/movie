@@ -1011,7 +1011,11 @@ def team_panel():
         st.success(msg)
 
     # ① 참가자 명단
-    md(f'<div class="mx mx-sec"><i>1</i>참가자 명단 <span style="font-size:1rem;color:#CDB8A6">{len(people)}명 저장됨</span></div>')
+    dflt = store.team_people_is_default()
+    md(f'<div class="mx mx-sec"><i>1</i>참가자 명단 <span style="font-size:1rem;color:#CDB8A6">{len(people)}명'
+       + (" · 기본 명단(운영팀 제외) 들어 있음" if dflt else " 저장됨") + "</span></div>")
+    if dflt:
+        md('<div class="mx mx-note">명단 사진의 <b>52명</b>이 미리 들어 있어요. 그대로 ②·③으로 넘어가면 되고, 바꿀 사람이 있으면 아래 칸에서 고친 뒤 [👥 참가자 명단 저장]을 누르세요.</div>')
     with st.form("tm_people"):
         txt = st.text_area("한 줄에 한 명 · 엑셀에서 이름 칸을 통째로 복사해 붙여도 돼요(‘6급’·‘성명’ 같은 칸은 저절로 빠지고, ‘양 현’처럼 띄어 쓴 이름은 붙여서 저장)",
                            "\n".join(people), height=240)

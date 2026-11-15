@@ -844,6 +844,15 @@ _RANK = re.compile(r"^((관세|행정|전산|공업|기술|운전|사무)?\s*\d+
                    r"주무관|사무관|서기관|계장|과장|팀장|국장|실장|반장|서기|서기보|주사|주사보)$", re.I)
 
 
+# 기본 참가자 명단(운영팀 제외 52명 · 명단 사진에서 옮김). [👥 참가자 명단 저장]을 한 번이라도 누르면 그 명단을 씀(비워서 저장하면 빈 명단).
+DEFAULT_PEOPLE = [
+    "김우철", "이정식", "이경석", "박지인", "최재희", "정선", "서정미", "방수지", "송민수", "권영미", "이재연", "연장미", "김선재",
+    "김재현", "엄유지", "정우진", "이승남", "박선현", "정새별", "김자경", "김영아", "신지애", "윤보승", "정지이", "김창수", "신현진",
+    "윤선영", "김지민", "양은서", "진선미", "동혜정", "김혜정", "윤혜민", "이은비", "엄세은", "유성근", "문승배", "김준형", "이준호",
+    "이진욱", "양현", "구창휘", "도예희", "이은호", "최민정", "안치은", "홍상우", "정미경", "주소희", "문승용", "김종한", "홍무성",
+]
+
+
 def parse_people(text: str) -> list[str]:
     """명단 칸 → 이름 목록. 줄·쉼표·탭으로 나눔(엑셀 여러 칸을 통째로 붙여 넣어도 됨). '6급'·'성명' 같은 칸은 뺌.
     한글 이름 사이 띄어쓰기('양 현')는 붙여서 '양현'. 같은 이름이 두 번이면 알려 줌."""
@@ -867,10 +876,23 @@ def parse_people(text: str) -> list[str]:
     return out
 
 
+def _people(c) -> list[str]:
+    raw = _kv_get(c, "team_people", None)
+    return [str(x) for x in (DEFAULT_PEOPLE if raw is None else raw)]
+
+
 def team_people() -> list[str]:
     c = _connect()
     try:
-        return [str(x) for x in (_kv_get(c, "team_people", []) or [])]
+        return _people(c)
+    finally:
+        c.close()
+
+
+def team_people_is_default() -> bool:
+    c = _connect()
+    try:
+        return _kv_get(c, "team_people", None) is None and bool(DEFAULT_PEOPLE)
     finally:
         c.close()
 
@@ -995,7 +1017,7 @@ def team_add(name: str) -> int:
         t["groups"][g] = t["groups"].get(g, []) + [n]
         t["seq"].append([n, g])
         _team_save(c, t)
-        people = [str(x) for x in (_kv_get(c, "team_people", []) or [])]
+        people = _people(c)
         if all(name_key(x) != name_key(n) for x in people):
             _kv_put(c, "team_people", people + [n])
     return g
@@ -1012,7 +1034,7 @@ def team_remove(name: str) -> int | None:
         t["seq"] = [[n, g] for n, g in t["seq"] if name_key(n) != k]
         t["groups"] = {g: [n for n in v if name_key(n) != k] for g, v in t["groups"].items()}
         _team_save(c, t)
-        people = [str(x) for x in (_kv_get(c, "team_people", []) or [])]
+        people = _people(c)
         _kv_put(c, "team_people", [x for x in people if name_key(x) != k])
     return hit
 
@@ -1033,7 +1055,7 @@ def team_rename(old: str, new: str) -> int:
         t["seq"] = [[new_n if name_key(n) == ko else n, g] for n, g in t["seq"]]
         t["groups"] = {g: [new_n if name_key(n) == ko else n for n in v] for g, v in t["groups"].items()}
         _team_save(c, t)
-        people = [str(x) for x in (_kv_get(c, "team_people", []) or [])]
+        people = _people(c)
         _kv_put(c, "team_people", [new_n if name_key(x) == ko else x for x in people])
     return hit
 
