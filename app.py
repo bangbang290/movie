@@ -966,7 +966,7 @@ def bgm_player(S: dict):
 
 
 # ───────────────────────── 팀 배정(마법의 분임 배정식)
-SORT_COLORS = ["#A8323E", "#2C5AA0", "#1E7356", "#6B3FA0", "#B7791F", "#1B7480", "#A84476"]   # 1~7분임 깃발 색
+SORT_COLORS = store.TEAM_COLORS      # 1~7분임 깃발 색(팀 배정 엑셀 머리글 색과 같음)
 SORT_MODES = {"idle": "분임 배정식 · 🔮 준비 화면(시작 전)", "play": "분임 배정식 · 🪄 진행", "final": "분임 배정식 · ✅ 결과"}
 
 
@@ -1128,9 +1128,13 @@ def team_panel():
 
     # ⑤ 저녁 세션(오락실)
     md('<div class="mx mx-sec">🌙 저녁 세션(오락실)에 같은 팀 넣기</div>')
-    md('<div class="mx mx-note">오락실 앱 운영 화면 → <b>[01 · 팀명 / 구호]</b> → 각 분임 칸의 <b>[팀원 명단 (선택)]</b>을 열고, '
-       '아래 상자 오른쪽 위 <b>복사</b> 버튼으로 복사해 <b>같은 번호</b> 분임 칸에 붙여 넣기 → 7개 다 넣은 뒤 <b>[팀 정보 저장]</b>. '
-       '(오락실 앱도 1분임~7분임 순서 그대로예요)</div>')
+    st.download_button("📥 팀 배정 엑셀 내려받기 (.xlsx)", store.team_xlsx(S), file_name=f"분임배정_{kst(T['at'], '%m%d_%H%M')}.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="tm_xlsx", type="primary", use_container_width=True)
+    md('<div class="mx mx-note"><b>엑셀로 한 번에</b>: 오락실 앱(<b>수정판 27</b>부터) 운영 화면 → <b>[01 · 팀명 / 구호]</b> → <b>[📂 엑셀로 명단 불러오기]</b> → 이 파일 고르기 '
+       '→ 7개 분임 팀원 명단이 한꺼번에 채워지고 저장돼요(팀명·구호는 그대로).<br>'
+       '엑셀에는 <b>분임 명단</b>(분임번호·분임·이름, 한 줄에 한 명) 시트와 인쇄용 <b>한눈에 보기</b>(분임별 칸) 시트가 있어요. 엑셀에서 이름을 고쳐 저장한 파일도 그대로 불러올 수 있어요.<br>'
+       '<b>복사로</b>(파일을 내려받을 수 없는 PC): 각 분임 칸의 <b>[팀원 명단 (선택)]</b>을 열고, 아래 상자 오른쪽 위 <b>복사</b> 버튼으로 복사해 '
+       '<b>같은 번호</b> 분임 칸에 붙여 넣기 → 7개 다 넣은 뒤 <b>[팀 정보 저장]</b>. (오락실 앱도 1분임~7분임 순서 그대로예요)</div>')
     cols = st.columns(4)
     for i, g in enumerate(range(1, store.N_GROUPS + 1)):
         with cols[i % 4]:

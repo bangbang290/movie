@@ -1055,6 +1055,129 @@ def team_show(mode: str = "play"):
         _kv_put(c, "screen", {"mode": "sort", "rid": None, "g": None, "n": 0, "at": time.time()})
 
 
+# ───────────────────────── 팀 배정 엑셀(저녁 세션 오락실 앱의 [📂 엑셀로 명단 불러오기]로 그대로 넣음)
+#   추가 설치 없이 만드는 작은 .xlsx: '분임 명단'(분임번호·분임·이름, 한 줄에 한 명) + '한눈에 보기'(분임별 칸, 인쇄용)
+_XNS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+_XHEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+
+
+def _xe(v) -> str:
+    return str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _xcol(i: int) -> str:
+    """0 → A, 25 → Z, 26 → AA"""
+    s, i = "", i + 1
+    while i:
+        i, r = divmod(i - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+
+def _xstyles(colors: list[str]) -> str:
+    """스타일: 0 기본 · 1 머리글 · 2 칸 · 3 가운데 칸 · 4~ 색 머리글(colors 순서대로, 흰 글씨)."""
+    font = '<font><sz val="11"/>{}<name val="맑은 고딕"/><family val="3"/><charset val="129"/></font>'
+    fills = ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>',
+             '<fill><patternFill patternType="solid"><fgColor rgb="FFF4EAD5"/><bgColor indexed="64"/></patternFill></fill>']
+    fills += [f'<fill><patternFill patternType="solid"><fgColor rgb="FF{c.lstrip("#").upper()}"/><bgColor indexed="64"/></patternFill></fill>' for c in colors]
+    side = '<{0} style="thin"><color rgb="FFBFBFBF"/></{0}>'
+    border = "<border>" + "".join(side.format(x) for x in ("left", "right", "top", "bottom")) + "<diagonal/></border>"
+    mid = '<alignment horizontal="center" vertical="center"/>'
+    xfs = ['<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>',
+           f'<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">{mid}</xf>',
+           '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>',
+           f'<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1">{mid}</xf>']
+    xfs += [f'<xf numFmtId="0" fontId="2" fillId="{3 + i}" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">{mid}</xf>'
+            for i in range(len(colors))]
+    return (_XHEAD + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            f'<fonts count="3">{font.format("")}{font.format("<b/>")}{font.format("<b/><color rgb=" + chr(34) + "FFFFFFFF" + chr(34) + "/>")}</fonts>'
+            f'<fills count="{len(fills)}">{"".join(fills)}</fills>'
+            f'<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>{border}</borders>'
+            '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+            f'<cellXfs count="{len(xfs)}">{"".join(xfs)}</cellXfs>'
+            '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>')
+
+
+def _xsheet(sh: dict, first: bool) -> str:
+    """sh = {rows: [[(값, 스타일) …] …], widths: [열 너비 …], freeze: 고정할 윗줄 수}
+    값: 글자 · 숫자 · ("수식", 미리 계산한 값) · None(빈 칸)"""
+    out = []
+    for ri, row in enumerate(sh["rows"], 1):
+        cells = []
+        for ci, (v, st) in enumerate(row):
+            ref = f"{_xcol(ci)}{ri}"
+            if v is None:
+                continue
+            if isinstance(v, tuple):
+                cells.append(f'<c r="{ref}" s="{st}" t="str"><f>{_xe(v[0])}</f><v>{_xe(v[1])}</v></c>')
+            elif isinstance(v, (int, float)) and not isinstance(v, bool):
+                cells.append(f'<c r="{ref}" s="{st}"><v>{v}</v></c>')
+            else:
+                cells.append(f'<c r="{ref}" s="{st}" t="inlineStr"><is><t xml:space="preserve">{_xe(v)}</t></is></c>')
+        out.append(f'<row r="{ri}">{"".join(cells)}</row>')
+    fz = int(sh.get("freeze") or 0)
+    pane = f'<pane ySplit="{fz}" topLeftCell="A{fz + 1}" activePane="bottomLeft" state="frozen"/>' if fz else ""
+    cols = "".join(f'<col min="{i}" max="{i}" width="{w}" customWidth="1"/>' for i, w in enumerate(sh.get("widths") or [], 1))
+    wide = bool(sh.get("landscape"))          # 인쇄: 가로로 한 장 너비에 맞춤
+    return (_XHEAD + f'<worksheet {_XNS}>' + ('<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' if wide else "")
+            + f'<sheetViews><sheetView workbookViewId="0"{" tabSelected=" + chr(34) + "1" + chr(34) if first else ""}>{pane}</sheetView></sheetViews>'
+            f'<sheetFormatPr defaultRowHeight="16.5"/>' + (f"<cols>{cols}</cols>" if cols else "") + f'<sheetData>{"".join(out)}</sheetData>'
+            '<printOptions horizontalCentered="1"/><pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>'
+            + ('<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>' if wide else '<pageSetup paperSize="9" orientation="portrait"/>')
+            + "</worksheet>")
+
+
+def _xlsx(sheets: list[dict], colors: list[str]) -> bytes:
+    n = len(sheets)
+    ct = (_XHEAD + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+          '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+          '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+          + "".join(f'<Override PartName="/xl/worksheets/sheet{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                    for i in range(1, n + 1))
+          + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>')
+    rels = (_XHEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')
+    wb = (_XHEAD + f'<workbook {_XNS}><bookViews><workbookView activeTab="0"/></bookViews><sheets>'
+          + "".join(f'<sheet name="{_xe(sh["name"])}" sheetId="{i}" r:id="rId{i}"/>' for i, sh in enumerate(sheets, 1))
+          + '</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>')
+    wrels = (_XHEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+             + "".join(f'<Relationship Id="rId{i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{i}.xml"/>'
+                       for i in range(1, n + 1))
+             + f'<Relationship Id="rId{n + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>')
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:      # 압축 없이(오락실 앱이 어느 브라우저에서나 바로 읽게)
+        z.writestr("[Content_Types].xml", ct)
+        z.writestr("_rels/.rels", rels)
+        z.writestr("xl/workbook.xml", wb)
+        z.writestr("xl/_rels/workbook.xml.rels", wrels)
+        z.writestr("xl/styles.xml", _xstyles(colors))
+        for i, sh in enumerate(sheets, 1):
+            z.writestr(f"xl/worksheets/sheet{i}.xml", _xsheet(sh, i == 1))
+    return buf.getvalue()
+
+
+TEAM_COLORS = ["#A8323E", "#2C5AA0", "#1E7356", "#6B3FA0", "#B7791F", "#1B7480", "#A84476"]   # 분임 깃발 색(스크린 배정식과 같음)
+
+
+def team_xlsx(S: dict | None = None) -> bytes:
+    """팀 배정 엑셀. 1번 시트 '분임 명단' = 분임번호 · 분임 · 이름(한 줄에 한 명, 분임 순 → 가나다순) ← 오락실 앱이 읽는 시트.
+    2번 시트 '한눈에 보기' = 분임마다 한 칸(맨 위 분임 이름, 그 아래 인원 수(수식), 이름)."""
+    S = S or get_settings()
+    T = team_get()
+    if not T["seq"]:
+        raise StoreError("아직 배정 전이에요. 먼저 무작위 배정을 해 주세요.")
+    groups = [sorted(T["groups"].get(g, [])) for g in range(1, N_GROUPS + 1)]
+    rows = [[("분임번호", 1), ("분임", 1), ("이름", 1)]]
+    for g, ns in enumerate(groups, 1):
+        rows += [[(g, 3), (S["names"][g - 1], 3), (n, 2)] for n in ns]
+    tall = max(len(x) for x in groups)
+    wide = [[(S["names"][g], 4 + g) for g in range(N_GROUPS)],
+            [((f'COUNTA({_xcol(g)}3:{_xcol(g)}300)&"명"', f"{len(groups[g])}명"), 3) for g in range(N_GROUPS)]]
+    wide += [[(groups[g][i], 3) if i < len(groups[g]) else (None, 0) for g in range(N_GROUPS)] for i in range(tall)]
+    return _xlsx([{"name": "분임 명단", "rows": rows, "widths": [10, 14, 16], "freeze": 1},
+                  {"name": "한눈에 보기", "rows": wide, "widths": [15] * N_GROUPS, "freeze": 2, "landscape": True}], TEAM_COLORS[:N_GROUPS])
+
+
 # ───────────────────────── Claude에게 보낼 요청문
 def _eul(word: str) -> str:
     """받침이 있으면 '을', 없으면 '를'."""
